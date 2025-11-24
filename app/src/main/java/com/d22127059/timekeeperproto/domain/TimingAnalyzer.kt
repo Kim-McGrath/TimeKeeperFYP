@@ -5,13 +5,7 @@ import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
 import com.d22127059.timekeeperproto.domain.model.TimingResult
 import kotlin.math.abs
 
-/**
- * Core business logic for analyzing drum hit timing accuracy.
- * Compares detected hits against expected metronome beats and categorizes accuracy.
- *
- * Based on research showing listeners judge early deviations more harshly than late ones
- * (Repp & Su, 2013), asymmetric thresholds are applied.
- */
+
 class TimingAnalyzer(
     private val bpm: Int,
     private val systemLatencyMs: Long = 0L
@@ -42,14 +36,7 @@ class TimingAnalyzer(
         )
     }
 
-    /**
-     * Generates expected beat timestamps for the entire session.
-     * Useful for metronome visualization and pre-calculating beat positions.
-     *
-     * @param sessionStartTime Session start timestamp
-     * @param durationMs Session duration in milliseconds
-     * @return List of expected beat timestamps
-     */
+
     fun generateExpectedBeats(sessionStartTime: Long, durationMs: Long): List<Long> {
         val beats = mutableListOf<Long>()
         var currentBeatTime = sessionStartTime
@@ -63,13 +50,7 @@ class TimingAnalyzer(
         return beats
     }
 
-    /**
-     * Calculates aggregate statistics from a list of timing results.
-     * Used for post-session reporting.
-     *
-     * @param results List of all hits in the session
-     * @return Map containing accuracy percentage, hit counts by category, and timing patterns
-     */
+
     fun calculateSessionStats(results: List<TimingResult>): SessionStats {
         if (results.isEmpty()) {
             return SessionStats(

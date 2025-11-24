@@ -18,15 +18,7 @@ import com.d22127059.timekeeperproto.ui.theme.ErrorRed
 import com.d22127059.timekeeperproto.ui.theme.SuccessGreen
 import com.d22127059.timekeeperproto.ui.theme.WarningAmber
 
-/**
- * Traffic light feedback indicator component.
- * Displays different shapes and colors based on accuracy category:
- * - GREEN: Circle (perfect timing)
- * - YELLOW: Diamond (acceptable timing)
- * - RED: Triangle (off-time)
- *
- * Includes animation for visual emphasis when category changes.
- */
+
 @Composable
 fun TrafficLightIndicator(
     category: AccuracyCategory,
