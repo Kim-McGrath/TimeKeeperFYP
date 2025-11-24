@@ -7,13 +7,7 @@ import com.d22127059.timekeeperproto.data.local.entities.Session
 import com.d22127059.timekeeperproto.domain.model.TimingResult
 import kotlinx.coroutines.flow.Flow
 
-/**
- * Repository for managing session and hit data.
- * Provides a clean API for the ViewModel layer to interact with data sources.
- *
- * In the prototype, this only uses local database. In production, could add
- * cloud sync, caching strategies, etc.
- */
+
 class SessionRepository(
     private val sessionDao: SessionDao,
     private val hitDao: HitDao

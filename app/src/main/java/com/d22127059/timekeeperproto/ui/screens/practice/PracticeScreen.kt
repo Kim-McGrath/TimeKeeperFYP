@@ -13,10 +13,7 @@ import androidx.compose.ui.unit.sp
 import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
 import com.d22127059.timekeeperproto.ui.components.TrafficLightIndicator
 
-/**
- * Practice session screen.
- * Displays real-time feedback during active session and results when completed.
- */
+
 @Composable
 fun PracticeScreen(
     viewModel: PracticeViewModel,

@@ -14,16 +14,6 @@ import kotlinx.coroutines.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/**
- * Handles real-time audio processing for detecting drum hit onsets.
- * Uses TarsosDSP's PercussionOnsetDetector to identify transient audio events.
- *
- * This class manages:
- * - Audio capture from device microphone via AudioRecord
- * - Audio processing pipeline with TarsosDSP
- * - Onset detection with configurable sensitivity
- * - Callback mechanism for detected hits
- */
 class OnsetDetector(
     private val sampleRate: Int = 44100,
     private val bufferSize: Int = 2048,
@@ -84,12 +74,6 @@ class OnsetDetector(
         }
     }
 
-    /**
-     * Starts recording and processing audio for onset detection.
-     * Runs audio processing on a background coroutine to avoid blocking UI thread.
-     *
-     * @param coroutineScope The coroutine scope for background processing
-     */
     fun startDetection(coroutineScope: CoroutineScope) {
         if (isRecording) {
             Log.w(TAG, "Already recording")
@@ -118,9 +102,6 @@ class OnsetDetector(
         }
     }
 
-    /**
-     * Stops recording and releases audio resources.
-     */
     fun stopDetection() {
         if (!isRecording) return
 
@@ -135,9 +116,7 @@ class OnsetDetector(
         }
     }
 
-    /**
-     * Releases all resources. Call this when done with the detector.
-     */
+
     fun release() {
         stopDetection()
         audioRecord?.release()
@@ -145,10 +124,6 @@ class OnsetDetector(
         Log.d(TAG, "Released OnsetDetector resources")
     }
 
-    /**
-     * Main audio processing loop.
-     * Reads audio data from AudioRecord and processes it through TarsosDSP pipeline.
-     */
     private suspend fun processAudio(record: AudioRecord) {
         val audioBuffer = ShortArray(bufferSize)
         val floatBuffer = FloatArray(bufferSize)
@@ -170,7 +145,7 @@ class OnsetDetector(
                 // Onset detected callback
                 val timestamp = System.currentTimeMillis()
 
-                // Only trigger if we're actively recording
+                // Only trigger if actively recording
                 if (isRecording) {
                     onOnsetDetected?.invoke(timestamp)
                     Log.d(TAG, "Onset detected at ${timestamp - sessionStartTime}ms since start")
@@ -214,7 +189,7 @@ class OnsetDetector(
                             // Onset detected callback
                             val timestamp = System.currentTimeMillis()
 
-                            // Only trigger if we're actively recording
+                            // Only trigger if actively recording
                             if (isRecording) {
                                 onOnsetDetected?.invoke(timestamp)
                                 Log.d(
@@ -237,7 +212,7 @@ class OnsetDetector(
                                 floatBuffer[i] = audioBuffer[i] / 32768.0f
                             }
 
-                            // Create audio event for TarsosDSP - Fixed constructor
+                            // Create audio event for TarsosDSP
                             val audioEvent = AudioEvent(audioFormat).apply {
                                 this.floatBuffer = floatBuffer.copyOf()
                             }
@@ -267,7 +242,7 @@ class OnsetDetector(
                  */
                 fun updateSensitivity(newSensitivity: Double, newThreshold: Double) {
                     // Would need to recreate detector with new settings
-                    // For prototype, sensitivity is set at initialization
+                    // For prototype sensitivity is set at initialization
                     Log.d(
                         TAG,
                         "Sensitivity update requested: $newSensitivity, threshold: $newThreshold"

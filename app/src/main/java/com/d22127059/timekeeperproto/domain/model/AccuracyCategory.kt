@@ -1,14 +1,7 @@
 package com.d22127059.timekeeperproto.domain.model
 
 
-/**
- * Represents the accuracy category for a drum hit based on timing error.
- * Uses asymmetric thresholds based on rhythmic perception research (Repp & Su, 2013).
- *
- * GREEN (Perfect): Within ±25ms of expected beat
- * YELLOW (Acceptable): Early: -70ms to -25ms, Late: +25ms to +100ms
- * RED (Off-time): Beyond acceptable thresholds
- */
+
 enum class AccuracyCategory {
     GREEN,   // Perfect timing - Circle shape in UI
     YELLOW,  // Acceptable timing - Triangle shape in UI
