@@ -11,9 +11,17 @@ import be.tarsos.dsp.io.TarsosDSPAudioFormat
 import be.tarsos.dsp.onsets.OnsetHandler
 import be.tarsos.dsp.onsets.PercussionOnsetDetector
 import kotlinx.coroutines.*
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
+/**
+ * Handles real-time audio processing for detecting drum hit onsets.
+ * Uses TarsosDSP's PercussionOnsetDetector to identify transient audio events.
+ *
+ * This class manages:
+ * - Audio capture from device microphone via AudioRecord
+ * - Audio processing pipeline with TarsosDSP
+ * - Onset detection with configurable sensitivity
+ * - Callback mechanism for detected hits
+ */
 class OnsetDetector(
     private val sampleRate: Int = 44100,
     private val bufferSize: Int = 2048,
@@ -62,10 +70,7 @@ class OnsetDetector(
                 return false
             }
 
-            Log.d(
-                TAG,
-                "OnsetDetector initialized: sampleRate=$sampleRate, bufferSize=$actualBufferSize"
-            )
+            Log.d(TAG, "OnsetDetector initialized: sampleRate=$sampleRate, bufferSize=$actualBufferSize")
             return true
 
         } catch (e: Exception) {
@@ -74,6 +79,12 @@ class OnsetDetector(
         }
     }
 
+    /**
+     * Starts recording and processing audio for onset detection.
+     * Runs audio processing on a background coroutine to avoid blocking UI thread.
+     *
+     * @param coroutineScope The coroutine scope for background processing
+     */
     fun startDetection(coroutineScope: CoroutineScope) {
         if (isRecording) {
             Log.w(TAG, "Already recording")
@@ -102,6 +113,9 @@ class OnsetDetector(
         }
     }
 
+    /**
+     * Stops recording and releases audio resources.
+     */
     fun stopDetection() {
         if (!isRecording) return
 
@@ -116,7 +130,9 @@ class OnsetDetector(
         }
     }
 
-
+    /**
+     * Releases all resources. Call this when done with the detector.
+     */
     fun release() {
         stopDetection()
         audioRecord?.release()
@@ -124,6 +140,10 @@ class OnsetDetector(
         Log.d(TAG, "Released OnsetDetector resources")
     }
 
+    /**
+     * Main audio processing loop.
+     * Reads audio data from AudioRecord and processes it through TarsosDSP pipeline.
+     */
     private suspend fun processAudio(record: AudioRecord) {
         val audioBuffer = ShortArray(bufferSize)
         val floatBuffer = FloatArray(bufferSize)
@@ -145,7 +165,7 @@ class OnsetDetector(
                 // Onset detected callback
                 val timestamp = System.currentTimeMillis()
 
-                // Only trigger if actively recording
+                // Only trigger if we're actively recording
                 if (isRecording) {
                     onOnsetDetected?.invoke(timestamp)
                     Log.d(TAG, "Onset detected at ${timestamp - sessionStartTime}ms since start")
@@ -154,8 +174,6 @@ class OnsetDetector(
             sensitivity,
             threshold
         )
-
-        var frameCounter = 0L
 
         while (isRecording) {
             // Read audio data
@@ -167,88 +185,37 @@ class OnsetDetector(
                     floatBuffer[i] = audioBuffer[i] / 32768.0f
                 }
 
-                // Create audio event for TarsosDSP
-                suspend fun processAudio(record: AudioRecord) {
-                    val audioBuffer = ShortArray(bufferSize)
-                    val floatBuffer = FloatArray(bufferSize)
-
-                    // Create TarsosDSP audio format
-                    val audioFormat = TarsosDSPAudioFormat(
-                        sampleRate.toFloat(),
-                        16, // 16-bit
-                        1,  // Mono
-                        true, // Signed
-                        false // Little endian
-                    )
-
-                    // Create percussion onset detector
-                    val onsetDetector = PercussionOnsetDetector(
-                        sampleRate.toFloat(),
-                        bufferSize,
-                        OnsetHandler { time, _ ->
-                            // Onset detected callback
-                            val timestamp = System.currentTimeMillis()
-
-                            // Only trigger if actively recording
-                            if (isRecording) {
-                                onOnsetDetected?.invoke(timestamp)
-                                Log.d(
-                                    TAG,
-                                    "Onset detected at ${timestamp - sessionStartTime}ms since start"
-                                )
-                            }
-                        },
-                        sensitivity,
-                        threshold
-                    )
-
-                    while (isRecording) {
-                        // Read audio data
-                        val readResult = record.read(audioBuffer, 0, bufferSize)
-
-                        if (readResult > 0) {
-                            // Convert short samples to float (-1.0 to 1.0 range)
-                            for (i in 0 until readResult) {
-                                floatBuffer[i] = audioBuffer[i] / 32768.0f
-                            }
-
-                            // Create audio event for TarsosDSP
-                            val audioEvent = AudioEvent(audioFormat).apply {
-                                this.floatBuffer = floatBuffer.copyOf()
-                            }
-
-                            // Process through onset detector
-                            onsetDetector.process(audioEvent)
-
-                        } else if (readResult == AudioRecord.ERROR_INVALID_OPERATION) {
-                            Log.e(TAG, "Invalid operation while reading audio")
-                            break
-                        } else if (readResult == AudioRecord.ERROR_BAD_VALUE) {
-                            Log.e(TAG, "Bad value while reading audio")
-                            break
-                        }
-
-                        // Yield to prevent blocking
-                        yield()
-                    }
+                // Create audio event for TarsosDSP - Fixed constructor
+                val audioEvent = AudioEvent(audioFormat).apply {
+                    this.floatBuffer = floatBuffer.copyOf()
                 }
 
-                /**
-                 * Updates sensitivity settings on the fly.
-                 * Note: This creates a new detector instance, so there may be a brief interruption.
-                 *
-                 * @param newSensitivity Lower values = more sensitive
-                 * @param newThreshold Minimum onset strength (0.0 to 1.0)
-                 */
-                fun updateSensitivity(newSensitivity: Double, newThreshold: Double) {
-                    // Would need to recreate detector with new settings
-                    // For prototype sensitivity is set at initialization
-                    Log.d(
-                        TAG,
-                        "Sensitivity update requested: $newSensitivity, threshold: $newThreshold"
-                    )
-                }
+                // Process through onset detector
+                onsetDetector.process(audioEvent)
+
+            } else if (readResult == AudioRecord.ERROR_INVALID_OPERATION) {
+                Log.e(TAG, "Invalid operation while reading audio")
+                break
+            } else if (readResult == AudioRecord.ERROR_BAD_VALUE) {
+                Log.e(TAG, "Bad value while reading audio")
+                break
             }
+
+            // Yield to prevent blocking
+            yield()
         }
+    }
+
+    /**
+     * Updates sensitivity settings on the fly.
+     * Note: This creates a new detector instance, so there may be a brief interruption.
+     *
+     * @param newSensitivity Lower values = more sensitive
+     * @param newThreshold Minimum onset strength (0.0 to 1.0)
+     */
+    fun updateSensitivity(newSensitivity: Double, newThreshold: Double) {
+        // Would need to recreate detector with new settings
+        // For prototype, sensitivity is set at initialization
+        Log.d(TAG, "Sensitivity update requested: $newSensitivity, threshold: $newThreshold")
     }
 }

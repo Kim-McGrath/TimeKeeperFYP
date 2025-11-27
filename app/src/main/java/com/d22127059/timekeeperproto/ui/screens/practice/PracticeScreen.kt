@@ -13,7 +13,10 @@ import androidx.compose.ui.unit.sp
 import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
 import com.d22127059.timekeeperproto.ui.components.TrafficLightIndicator
 
-
+/**
+ * Practice session screen.
+ * Displays real-time feedback during active session and results when completed.
+ */
 @Composable
 fun PracticeScreen(
     viewModel: PracticeViewModel,
@@ -33,7 +36,7 @@ fun PracticeScreen(
         when (val state = uiState) {
             is PracticeUiState.Idle -> {
                 IdleContent(
-                    onStartClick = { viewModel.startSession() }
+                    onStartClick = { viewModel.initializeDetector() }
                 )
             }
 
@@ -57,13 +60,17 @@ fun PracticeScreen(
             is PracticeUiState.Completed -> {
                 CompletedContent(
                     stats = state.stats,
-                    onDoneClick = { /* Navigate away */ }
+                    onDoneClick = {
+                        // Reset to ready state for new session
+                        viewModel.initializeDetector()
+                    }
                 )
             }
 
             is PracticeUiState.Error -> {
                 ErrorContent(
-                    message = state.message
+                    message = state.message,
+                    onRetryClick = { viewModel.initializeDetector() }
                 )
             }
         }
@@ -76,13 +83,24 @@ private fun IdleContent(onStartClick: () -> Unit) {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Button(
-            onClick = onStartClick,
-            modifier = Modifier
-                .width(200.dp)
-                .height(60.dp)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Initialize Audio", fontSize = 18.sp)
+            Text(
+                text = "TimeKeeper",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Button(
+                onClick = onStartClick,
+                modifier = Modifier
+                    .width(200.dp)
+                    .height(60.dp)
+            ) {
+                Text("Initialize Audio", fontSize = 18.sp)
+            }
         }
     }
 }
@@ -93,13 +111,24 @@ private fun ReadyContent(onStartClick: () -> Unit) {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Button(
-            onClick = onStartClick,
-            modifier = Modifier
-                .width(200.dp)
-                .height(60.dp)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Start Practice", fontSize = 18.sp)
+            Text(
+                text = "Ready to Practice",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Button(
+                onClick = onStartClick,
+                modifier = Modifier
+                    .width(200.dp)
+                    .height(60.dp)
+            ) {
+                Text("Start Practice", fontSize = 18.sp)
+            }
         }
     }
 }
@@ -129,17 +158,20 @@ private fun ActiveSessionContent(
             Text(
                 text = formatTime(elapsedTimeMs),
                 color = Color.White,
-                fontSize = 16.sp
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
             )
             Text(
                 text = "$bpm BPM",
                 color = Color.White,
-                fontSize = 16.sp
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
             )
             Text(
                 text = "Hits: $hitCount",
                 color = Color.White,
-                fontSize = 16.sp
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
             )
         }
 
@@ -255,7 +287,7 @@ private fun CompletedContent(
                 .width(200.dp)
                 .height(50.dp)
         ) {
-            Text("Done", fontSize = 18.sp)
+            Text("Start New Session", fontSize = 18.sp)
         }
     }
 }
@@ -280,16 +312,27 @@ private fun StatCard(label: String, count: Int, color: Color) {
 }
 
 @Composable
-private fun ErrorContent(message: String) {
+private fun ErrorContent(
+    message: String,
+    onRetryClick: () -> Unit
+) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "Error: $message",
-            color = Color.Red,
-            fontSize = 18.sp
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Error: $message",
+                color = Color.Red,
+                fontSize = 18.sp
+            )
+            Button(onClick = onRetryClick) {
+                Text("Retry")
+            }
+        }
     }
 }
 
