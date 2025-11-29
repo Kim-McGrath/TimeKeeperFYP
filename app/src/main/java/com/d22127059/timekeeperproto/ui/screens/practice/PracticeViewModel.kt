@@ -1,6 +1,8 @@
 package com.d22127059.timekeeperproto.ui.screens.practice
 
+import android.Manifest
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d22127059.timekeeperproto.audio.MetronomeEngine
@@ -64,6 +66,7 @@ class PracticeViewModel(
         }
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun initializeDetector() {
         Log.d(TAG, "Initializing detector and metronome")
 
