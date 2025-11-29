@@ -7,16 +7,16 @@ import android.util.Log
 import kotlinx.coroutines.*
 import kotlin.math.sin
 
-/**
- * Simple metronome engine that generates and plays click sounds at a specified BPM.
- * Uses AudioTrack to synthesize click sounds in real-time.
- */
 class MetronomeEngine {
     companion object {
         private const val TAG = "MetronomeEngine"
         private const val SAMPLE_RATE = 44100
         private const val CLICK_DURATION_MS = 50
-        private const val CLICK_FREQUENCY_HZ = 1000.0 // 1kHz tone for click
+        private const val CLICK_FREQUENCY_HZ = 1000.0
+
+        // ✅ CRITICAL: AudioTrack output latency compensation
+        // This represents the delay between write() and actual audio playback
+        private const val AUDIO_OUTPUT_LATENCY_MS = 280L
     }
 
     private var audioTrack: AudioTrack? = null
@@ -24,17 +24,12 @@ class MetronomeEngine {
     private var isPlaying = false
     private var bpm: Int = 120
 
-    // Callback when a click is actually played
     var onClickPlayed: ((clickTime: Long, beatNumber: Int) -> Unit)? = null
 
-    // Pre-generated click sound
     private val clickSound: ShortArray by lazy {
         generateClickSound()
     }
 
-    /**
-     * Initializes the AudioTrack for playback.
-     */
     fun initialize(): Boolean {
         try {
             val bufferSize = AudioTrack.getMinBufferSize(
@@ -75,10 +70,6 @@ class MetronomeEngine {
         }
     }
 
-    /**
-     * Starts the metronome at the specified BPM.
-     * Returns the session start time (first beat timestamp).
-     */
     fun start(bpm: Int, coroutineScope: CoroutineScope): Long {
         if (isPlaying) {
             Log.w(TAG, "Metronome already playing")
@@ -88,42 +79,53 @@ class MetronomeEngine {
         this.bpm = bpm
         val intervalMs = (60000.0 / bpm).toLong()
 
-        // Set the session start time to NOW
-        val sessionStartTime = System.currentTimeMillis()
-
         audioTrack?.let { track ->
             try {
                 track.play()
                 isPlaying = true
 
+                // ✅ Record write time
+                val writeTime = System.currentTimeMillis()
+                playClick(track)
+
+                // ✅ CRITICAL: Add latency to get actual playback time
+                val sessionStartTime = writeTime + AUDIO_OUTPUT_LATENCY_MS
+                onClickPlayed?.invoke(sessionStartTime, 0)
+
+                Log.d(TAG, "CLICK beat 0 written at ${writeTime}ms, plays at ${sessionStartTime}ms (latency: ${AUDIO_OUTPUT_LATENCY_MS}ms)")
+
+                // ✅ Launch coroutine for remaining beats
                 metronomeJob = coroutineScope.launch(Dispatchers.IO) {
-                    var beatNumber = 0
+                    var beatNumber = 1
+                    // ✅ Schedule next click based on PLAYBACK time (not write time)
                     var nextClickTime = sessionStartTime + intervalMs
 
                     while (isPlaying) {
                         val currentTime = System.currentTimeMillis()
-                        val timeUntilClick = nextClickTime - currentTime
+                        // ✅ We need to WRITE the audio BEFORE it should play
+                        val timeUntilWrite = nextClickTime - AUDIO_OUTPUT_LATENCY_MS - currentTime
 
-                        if (timeUntilClick <= 0) {
-                            // Time to play click
+                        if (timeUntilWrite <= 0) {
+                            val writeTimestamp = System.currentTimeMillis()
                             playClick(track)
 
-                            // Invoke callback AFTER click is played
-                            onClickPlayed?.invoke(currentTime, beatNumber)
+                            // ✅ Report PLAYBACK time (write time + latency)
+                            val playbackTimestamp = writeTimestamp + AUDIO_OUTPUT_LATENCY_MS
+                            onClickPlayed?.invoke(playbackTimestamp, beatNumber)
 
-                            Log.d(TAG, "CLICK beat $beatNumber at ${currentTime}ms, expected ${nextClickTime}ms, error: ${currentTime - nextClickTime}ms")
+                            Log.d(TAG, "CLICK beat $beatNumber written at ${writeTimestamp}ms, plays at ${playbackTimestamp}ms, expected ${nextClickTime}ms, error: ${playbackTimestamp - nextClickTime}ms")
 
-                            // Schedule next click
                             beatNumber++
                             nextClickTime += intervalMs
                         } else {
-                            // Wait until next click time (but not too long)
-                            delay(minOf(timeUntilClick, 10))
+                            delay(minOf(timeUntilWrite, 10))
                         }
                     }
                 }
 
-                Log.d(TAG, "Metronome started at $bpm BPM (${intervalMs}ms interval), session start: $sessionStartTime")
+                Log.d(TAG, "Metronome started at $bpm BPM (${intervalMs}ms interval)")
+                return sessionStartTime
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting metronome", e)
                 isPlaying = false
@@ -132,12 +134,9 @@ class MetronomeEngine {
             Log.e(TAG, "AudioTrack not initialized")
         }
 
-        return sessionStartTime
+        return System.currentTimeMillis()
     }
 
-    /**
-     * Stops the metronome.
-     */
     fun stop() {
         if (!isPlaying) return
 
@@ -153,9 +152,6 @@ class MetronomeEngine {
         }
     }
 
-    /**
-     * Releases all resources.
-     */
     fun release() {
         stop()
         audioTrack?.release()
@@ -163,9 +159,6 @@ class MetronomeEngine {
         Log.d(TAG, "MetronomeEngine released")
     }
 
-    /**
-     * Plays a single click sound.
-     */
     private fun playClick(track: AudioTrack) {
         try {
             track.write(clickSound, 0, clickSound.size)
@@ -174,23 +167,14 @@ class MetronomeEngine {
         }
     }
 
-    /**
-     * Generates a short click sound (sine wave with envelope).
-     */
     private fun generateClickSound(): ShortArray {
         val samples = (SAMPLE_RATE * CLICK_DURATION_MS / 1000.0).toInt()
         val buffer = ShortArray(samples)
 
         for (i in 0 until samples) {
             val t = i.toDouble() / SAMPLE_RATE
-
-            // Sine wave
             val sine = sin(2.0 * Math.PI * CLICK_FREQUENCY_HZ * t)
-
-            // Envelope: Quick attack, exponential decay
             val envelope = Math.exp(-t * 30.0)
-
-            // Combine and scale to 16-bit PCM range (INCREASED VOLUME)
             val sample = (sine * envelope * 0.8 * Short.MAX_VALUE).toInt()
             buffer[i] = sample.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }

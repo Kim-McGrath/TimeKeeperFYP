@@ -12,10 +12,6 @@ import be.tarsos.dsp.onsets.OnsetHandler
 import be.tarsos.dsp.onsets.PercussionOnsetDetector
 import kotlinx.coroutines.*
 
-/**
- * Handles real-time audio processing for detecting drum hit onsets.
- * Uses TarsosDSP's PercussionOnsetDetector to identify transient audio events.
- */
 class OnsetDetector(
     private val sampleRate: Int = 44100,
     private val bufferSize: Int = 2048,
@@ -24,19 +20,21 @@ class OnsetDetector(
 ) {
     companion object {
         private const val TAG = "OnsetDetector"
+
+        // ✅ CRITICAL: Audio processing latency compensation
+        // This represents the delay from audio capture to onset detection
+        private const val AUDIO_PROCESSING_LATENCY_MS = 160L
     }
 
     private var audioRecord: AudioRecord? = null
     private var processingJob: Job? = null
     private var isRecording = false
-    private var audioStartTime: Long = 0L
-    private var totalSamplesProcessed: Long = 0
+    private var recordingStartTime: Long = 0L
 
-    // Callback for when an onset (hit) is detected
     var onOnsetDetected: ((timestamp: Long) -> Unit)? = null
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    fun initialize(): Boolean {
+    fun initialize(): Boolean {  // ✅ FIXED: Added this method
         try {
             val minBufferSize = AudioRecord.getMinBufferSize(
                 sampleRate,
@@ -73,17 +71,14 @@ class OnsetDetector(
         }
     }
 
-    /**
-     * Starts recording and processing audio for onset detection.
-     */
-    fun startDetection(coroutineScope: CoroutineScope) {
+    // ✅ FIXED: Renamed from startDetection to start
+    fun start(sessionStartTime: Long, coroutineScope: CoroutineScope) {
         if (isRecording) {
             Log.w(TAG, "Already recording")
             return
         }
 
-        audioStartTime = System.currentTimeMillis()
-        totalSamplesProcessed = 0
+        recordingStartTime = sessionStartTime
 
         audioRecord?.let { record ->
             try {
@@ -94,7 +89,7 @@ class OnsetDetector(
                     processAudio(record)
                 }
 
-                Log.d(TAG, "Started onset detection at $audioStartTime")
+                Log.d(TAG, "Started onset detection, sessionStart=$sessionStartTime, audioLatencyCompensation=${AUDIO_PROCESSING_LATENCY_MS}ms")
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting recording", e)
                 isRecording = false
@@ -104,10 +99,8 @@ class OnsetDetector(
         }
     }
 
-    /**
-     * Stops recording and releases audio resources.
-     */
-    fun stopDetection() {
+    // ✅ FIXED: Renamed from stopDetection to stop
+    fun stop() {
         if (!isRecording) return
 
         isRecording = false
@@ -121,19 +114,13 @@ class OnsetDetector(
         }
     }
 
-    /**
-     * Releases all resources.
-     */
-    fun release() {
-        stopDetection()
+    fun release() {  // ✅ This method exists and matches
+        stop()
         audioRecord?.release()
         audioRecord = null
         Log.d(TAG, "Released OnsetDetector resources")
     }
 
-    /**
-     * Main audio processing loop.
-     */
     private suspend fun processAudio(record: AudioRecord) {
         val audioBuffer = ShortArray(bufferSize)
         val floatBuffer = FloatArray(bufferSize)
@@ -150,18 +137,20 @@ class OnsetDetector(
             sampleRate.toFloat(),
             bufferSize,
             OnsetHandler { timeInSeconds, _ ->
-                // ✅ CRITICAL FIX: Calculate timestamp from CURRENT wall-clock time
-                // TarsosDSP's timeInSeconds is relative to the start of processing,
-                // but by the time we receive this callback, we're already
-                // several buffers ahead. We need to use NOW.
-
-                val actualTimestamp = System.currentTimeMillis()
-
                 if (isRecording) {
+                    // ✅ REVERSED: ADD latency instead of subtracting
+                    val onsetTimeMs = (timeInSeconds * 1000.0).toLong()
+                    val compensatedOnsetTimeMs = onsetTimeMs + AUDIO_PROCESSING_LATENCY_MS
+                    val actualTimestamp = recordingStartTime + compensatedOnsetTimeMs
+
                     onOnsetDetected?.invoke(actualTimestamp)
-                    Log.d(TAG, "Onset detected: tarsosDSPTime=${timeInSeconds}s, " +
-                            "actualTimestamp=$actualTimestamp, " +
-                            "timeSinceStart=${actualTimestamp - audioStartTime}ms")
+
+                    Log.d(TAG, "Onset detected: " +
+                            "tarsosDSP=${String.format("%.3f", timeInSeconds)}s, " +
+                            "rawOnsetTimeMs=${onsetTimeMs}ms, " +
+                            "compensatedOnsetTimeMs=${compensatedOnsetTimeMs}ms, " +
+                            "sessionStart=$recordingStartTime, " +
+                            "actualTimestamp=$actualTimestamp")
                 }
             },
             sensitivity,
@@ -172,13 +161,9 @@ class OnsetDetector(
             val readResult = record.read(audioBuffer, 0, bufferSize)
 
             if (readResult > 0) {
-                // Convert short samples to float
                 for (i in 0 until readResult) {
                     floatBuffer[i] = audioBuffer[i] / 32768.0f
                 }
-
-                // Track total samples (for debugging if needed)
-                totalSamplesProcessed += readResult
 
                 val audioEvent = AudioEvent(audioFormat).apply {
                     this.floatBuffer = floatBuffer.copyOf()

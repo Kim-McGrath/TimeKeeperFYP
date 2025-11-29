@@ -21,26 +21,19 @@ class TimingAnalyzer(
         private const val TAG = "TimingAnalyzer"
     }
 
-    // Calculate milliseconds between beats based on BPM
     private val msBetweenBeats: Double = 60000.0 / bpm
 
     fun analyzeHit(hitTimestamp: Long, sessionStartTime: Long): TimingResult {
-        // Compensate for system latency
-        val compensatedHitTime = hitTimestamp - systemLatencyMs
+        // Use the hit timestamp as-is (it's already compensated in OnsetDetector)
+        val timeSinceStart = (hitTimestamp - sessionStartTime).toDouble()
 
-        // ✅ FIXED: sessionStartTime now IS beat 0 (thanks to MetronomeEngine fix)
-        val timeSinceStart = (compensatedHitTime - sessionStartTime).toDouble()
-
-        // Use round() to find the NEAREST beat
+        // Find the nearest beat
         val nearestBeatNumber = round(timeSinceStart / msBetweenBeats).toLong()
-
-        // ✅ FIXED: Beat 0 is AT sessionStartTime (no offset needed)
         val expectedBeatTimestamp = sessionStartTime + (nearestBeatNumber * msBetweenBeats).toLong()
 
-        // Calculate timing error (positive = late, negative = early)
-        val timingErrorMs = (compensatedHitTime - expectedBeatTimestamp).toDouble()
+        // Calculate timing error
+        val timingErrorMs = (hitTimestamp - expectedBeatTimestamp).toDouble()
 
-        // Categorize based on thresholds
         val category = AccuracyCategory.fromTimingError(timingErrorMs)
 
         Log.d(TAG, "Hit Analysis: timeSinceStart=${timeSinceStart.toLong()}ms, " +
@@ -50,7 +43,7 @@ class TimingAnalyzer(
                 "category=$category")
 
         return TimingResult(
-            hitTimestamp = compensatedHitTime,
+            hitTimestamp = hitTimestamp,
             expectedBeatTimestamp = expectedBeatTimestamp,
             timingErrorMs = timingErrorMs,
             accuracyCategory = category
