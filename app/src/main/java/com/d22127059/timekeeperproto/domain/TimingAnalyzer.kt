@@ -1,6 +1,5 @@
 package com.d22127059.timekeeperproto.domain
 
-
 import android.util.Log
 import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
 import com.d22127059.timekeeperproto.domain.model.TimingResult
@@ -29,15 +28,13 @@ class TimingAnalyzer(
         // Compensate for system latency
         val compensatedHitTime = hitTimestamp - systemLatencyMs
 
-        // Calculate which beat this hit is closest to
-        // Note: First click is at sessionStartTime + msBetweenBeats (beat 0)
+        // ✅ FIXED: sessionStartTime now IS beat 0 (thanks to MetronomeEngine fix)
         val timeSinceStart = (compensatedHitTime - sessionStartTime).toDouble()
 
         // Use round() to find the NEAREST beat
         val nearestBeatNumber = round(timeSinceStart / msBetweenBeats).toLong()
 
-        // Calculate the expected timestamp for this beat
-        // Beat 0 is at sessionStartTime + msBetweenBeats
+        // ✅ FIXED: Beat 0 is AT sessionStartTime (no offset needed)
         val expectedBeatTimestamp = sessionStartTime + (nearestBeatNumber * msBetweenBeats).toLong()
 
         // Calculate timing error (positive = late, negative = early)
@@ -64,13 +61,13 @@ class TimingAnalyzer(
      * Generates expected beat timestamps for the entire session.
      * Useful for metronome visualization and pre-calculating beat positions.
      *
-     * @param sessionStartTime Session start timestamp
+     * @param sessionStartTime Session start timestamp (beat 0)
      * @param durationMs Session duration in milliseconds
      * @return List of expected beat timestamps
      */
     fun generateExpectedBeats(sessionStartTime: Long, durationMs: Long): List<Long> {
         val beats = mutableListOf<Long>()
-        var currentBeatTime = sessionStartTime
+        var currentBeatTime = sessionStartTime  // ✅ Start at sessionStartTime (beat 0)
         val sessionEndTime = sessionStartTime + durationMs
 
         while (currentBeatTime <= sessionEndTime) {
@@ -113,7 +110,7 @@ class TimingAnalyzer(
         // Calculate average timing error to detect rushing/dragging
         val avgTimingError = results.map { it.timingErrorMs }.average()
 
-        Log.d(TAG, "Session Stats: total=$results.size, green=$greenCount, yellow=$yellowCount, " +
+        Log.d(TAG, "Session Stats: total=${results.size}, green=$greenCount, yellow=$yellowCount, " +
                 "red=$redCount, accuracy=${accuracyPercentage.toInt()}%, avgError=${avgTimingError.toInt()}ms")
 
         return SessionStats(

@@ -1,5 +1,6 @@
 package com.d22127059.timekeeperproto.ui.screens.practice
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -11,11 +12,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
+import com.d22127059.timekeeperproto.ui.components.DebugTimingVisualization
 import com.d22127059.timekeeperproto.ui.components.TrafficLightIndicator
 
 /**
  * Practice session screen.
- * Displays real-time feedback during active session and results when completed.
  */
 @Composable
 fun PracticeScreen(
@@ -23,6 +24,8 @@ fun PracticeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val debugEvents by viewModel.debugEvents.collectAsState()
+    var showDebug by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.initializeDetector()
@@ -42,26 +45,51 @@ fun PracticeScreen(
 
             is PracticeUiState.Ready -> {
                 ReadyContent(
-                    onStartClick = { viewModel.startSession() }
+                    onStartClick = { viewModel.startCountdown() }  // ✅ CHANGED
+                )
+            }
+
+            is PracticeUiState.Countdown -> {  // ✅ NEW STATE
+                CountdownContent(
+                    countdownValue = state.countdownValue
                 )
             }
 
             is PracticeUiState.Active -> {
-                ActiveSessionContent(
-                    category = state.currentCategory,
-                    hitCount = state.hitCount,
-                    elapsedTimeMs = state.elapsedTimeMs,
-                    bpm = state.bpm,
-                    onPauseClick = { viewModel.pauseSession() },
-                    onEndClick = { viewModel.endSession() }
-                )
+                if (showDebug) {
+                    DebugTimingVisualization(
+                        events = debugEvents,
+                        sessionStartTime = state.sessionStartTime,
+                        currentTime = System.currentTimeMillis()
+                    )
+                } else {
+                    ActiveSessionContent(
+                        category = state.currentCategory,
+                        hitCount = state.hitCount,
+                        elapsedTimeMs = state.elapsedTimeMs,
+                        bpm = state.bpm,
+                        onPauseClick = { viewModel.pauseSession() },
+                        onEndClick = { viewModel.endSession() }
+                    )
+                }
+
+                Button(
+                    onClick = { showDebug = !showDebug },
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (showDebug) Color(0xFFFF6B35) else Color(0xFF6B7280)
+                    )
+                ) {
+                    Text(if (showDebug) "NORMAL VIEW" else "DEBUG VIEW")
+                }
             }
 
             is PracticeUiState.Completed -> {
                 CompletedContent(
                     stats = state.stats,
                     onDoneClick = {
-                        // Reset to ready state for new session
                         viewModel.initializeDetector()
                     }
                 )
@@ -78,14 +106,14 @@ fun PracticeScreen(
 }
 
 @Composable
-private fun IdleContent(onStartClick: () -> Unit) {
+fun IdleContent(onStartClick: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Text(
                 text = "TimeKeeper",
@@ -93,6 +121,15 @@ private fun IdleContent(onStartClick: () -> Unit) {
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold
             )
+
+            Text(
+                text = "Practice rhythm accuracy",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 18.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Button(
                 onClick = onStartClick,
                 modifier = Modifier
@@ -133,6 +170,61 @@ private fun ReadyContent(onStartClick: () -> Unit) {
     }
 }
 
+// ✅ NEW: Countdown screen
+@Composable
+private fun CountdownContent(countdownValue: Int) {
+    // Animate the countdown number
+    val scale by animateFloatAsState(
+        targetValue = if (countdownValue > 0) 1.2f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "countdown_scale"
+    )
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Get Ready...",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            if (countdownValue > 0) {
+                Text(
+                    text = countdownValue.toString(),
+                    color = Color(0xFF10B981),
+                    fontSize = (120 * scale).sp,
+                    fontWeight = FontWeight.Bold
+                )
+            } else {
+                Text(
+                    text = "GO!",
+                    color = Color(0xFFFF6B35),
+                    fontSize = (100 * scale).sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Text(
+                text = "Listen to the metronome...",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 16.sp
+            )
+        }
+    }
+}
+
+// ... rest of existing composables (ActiveSessionContent, CompletedContent, etc.) ...
+
 @Composable
 private fun ActiveSessionContent(
     category: AccuracyCategory,
@@ -148,7 +240,6 @@ private fun ActiveSessionContent(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Status bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -177,7 +268,6 @@ private fun ActiveSessionContent(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Large centered feedback indicator
         TrafficLightIndicator(
             category = category,
             size = 250f
@@ -185,9 +275,8 @@ private fun ActiveSessionContent(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Control buttons
         Row(
-            modifier = Modifier.padding(bottom = 32.dp),
+            modifier = Modifier.padding(bottom = 80.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Button(
@@ -231,7 +320,6 @@ private fun CompletedContent(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Accuracy percentage
         Text(
             text = "${stats.accuracyPercentage.toInt()}%",
             color = Color(0xFF10B981),
@@ -246,7 +334,6 @@ private fun CompletedContent(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Hit distribution
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -258,7 +345,6 @@ private fun CompletedContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Timing pattern
         if (stats.tendencyToRush) {
             Text(
                 text = "Tendency to rush (play early)",

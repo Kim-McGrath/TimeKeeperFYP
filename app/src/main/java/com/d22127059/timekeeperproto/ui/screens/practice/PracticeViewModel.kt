@@ -1,6 +1,5 @@
 package com.d22127059.timekeeperproto.ui.screens.practice
 
-
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,6 +11,8 @@ import com.d22127059.timekeeperproto.domain.SessionStats
 import com.d22127059.timekeeperproto.domain.TimingAnalyzer
 import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
 import com.d22127059.timekeeperproto.domain.model.TimingResult
+import com.d22127059.timekeeperproto.ui.components.DebugEvent
+import com.d22127059.timekeeperproto.ui.components.EventType
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,16 +39,30 @@ class PracticeViewModel(
     private val _uiState = MutableStateFlow<PracticeUiState>(PracticeUiState.Idle)
     val uiState: StateFlow<PracticeUiState> = _uiState.asStateFlow()
 
+    // Debug events
+    private val _debugEvents = MutableStateFlow<List<DebugEvent>>(emptyList())
+    val debugEvents: StateFlow<List<DebugEvent>> = _debugEvents.asStateFlow()
+
     // Current session data
     private var sessionStartTime: Long = 0L
     private var currentSessionId: Long? = null
     private var timingAnalyzer: TimingAnalyzer? = null
     private val hitResults = mutableListOf<TimingResult>()
     private var timerJob: Job? = null
+    private val actualBeatTimes = mutableListOf<Long>()
+    private var intervalMs: Long = 0
 
     // Session configuration
     private var bpm: Int = 120
     private var durationMs: Long = 300000 // 5 minutes default
+
+    private fun addDebugEvent(event: DebugEvent) {
+        _debugEvents.value = _debugEvents.value + event
+        // Keep only last 100 events to prevent memory issues
+        if (_debugEvents.value.size > 100) {
+            _debugEvents.value = _debugEvents.value.takeLast(100)
+        }
+    }
 
     fun initializeDetector() {
         Log.d(TAG, "Initializing detector and metronome")
@@ -70,39 +85,122 @@ class PracticeViewModel(
     }
 
     /**
-     * Starts a new practice session.
-     *
-     * @param bpm Metronome tempo
-     * @param durationMinutes Session duration in minutes
+     * Starts countdown before session begins.
+     * Metronome plays during countdown but hits aren't registered yet.
      */
-    fun startSession(bpm: Int = 100, durationMinutes: Int = 5) {
-        Log.d(TAG, "Starting session: BPM=$bpm, duration=$durationMinutes min")
+    fun startCountdown(bpm: Int = 100, durationMinutes: Int = 5) {
+        Log.d(TAG, "Starting countdown before session")
 
         this.bpm = bpm
         this.durationMs = durationMinutes * 60 * 1000L
+        this.intervalMs = (60000.0 / bpm).toLong()
+
         hitResults.clear()
+        actualBeatTimes.clear()
+        _debugEvents.value = emptyList()
 
-        // Start metronome and get the session start time
-        sessionStartTime = metronomeEngine.start(bpm, viewModelScope)
-
-        Log.d(TAG, "Session start time: $sessionStartTime")
-
-        // Create the timing analyzer
-        timingAnalyzer = TimingAnalyzer(bpm)
-
-        // Set up onset detection callback
-        onsetDetector.onOnsetDetected = { timestamp ->
-            handleOnsetDetected(timestamp)
+        // Set up metronome click callback early
+        metronomeEngine.onClickPlayed = { clickTime, beatNumber ->
+            actualBeatTimes.add(clickTime)
+            addDebugEvent(DebugEvent(
+                timestamp = clickTime,
+                type = EventType.METRONOME_CLICK,
+                label = "METRONOME CLICK $beatNumber",
+                details = "Actual time: $clickTime"
+            ))
         }
 
-        // Start detecting
+        // Start metronome during countdown
+        sessionStartTime = metronomeEngine.start(bpm, viewModelScope)
+
+        addDebugEvent(DebugEvent(
+            timestamp = sessionStartTime,
+            type = EventType.ANALYSIS_RESULT,
+            label = "COUNTDOWN START",
+            details = "Metronome started, BPM: $bpm"
+        ))
+
+        Log.d(TAG, "Metronome started at $sessionStartTime during countdown")
+
+        // Run countdown synchronized with metronome beats
+        viewModelScope.launch {
+            // Wait for first beat (already played at sessionStartTime)
+            delay(intervalMs)
+            _uiState.value = PracticeUiState.Countdown(3)
+
+            // Wait for second beat
+            delay(intervalMs)
+            _uiState.value = PracticeUiState.Countdown(2)
+
+            // Wait for third beat
+            delay(intervalMs)
+            _uiState.value = PracticeUiState.Countdown(1)
+
+            // Wait for fourth beat - show "GO!"
+            delay(intervalMs)
+            _uiState.value = PracticeUiState.Countdown(0)
+
+            // Brief pause then start
+            delay(500)
+
+            // Start actual session (detection, timing, etc.)
+            startSessionAfterCountdown(bpm, durationMinutes)
+        }
+    }
+
+    /**
+     * Starts the actual practice session after countdown completes.
+     * Metronome is already playing at this point.
+     */
+    private fun startSessionAfterCountdown(bpm: Int, durationMinutes: Int) {
+        Log.d(TAG, "Starting active session after countdown")
+
+        addDebugEvent(DebugEvent(
+            timestamp = System.currentTimeMillis(),
+            type = EventType.ANALYSIS_RESULT,
+            label = "SESSION ACTIVE",
+            details = "Hit detection enabled"
+        ))
+
+        // Create timing analyzer
+        timingAnalyzer = TimingAnalyzer(bpm)
+
+        // Set up onset detection callback with filtering
+        onsetDetector.onOnsetDetected = { timestamp ->
+            val filtered = isMetronomeClick(timestamp)
+            val closestBeatDiff = findClosestBeat(timestamp)
+
+            Log.d(TAG, "Onset at $timestamp, closest beat: ${closestBeatDiff}ms away, filtered: $filtered")
+
+            if (filtered) {
+                addDebugEvent(DebugEvent(
+                    timestamp = timestamp,
+                    type = EventType.HIT_FILTERED,
+                    label = "FILTERED",
+                    details = "Within ${closestBeatDiff}ms of beat"
+                ))
+                Log.d(TAG, "Filtered onset at $timestamp (${closestBeatDiff}ms from beat)")
+            } else {
+                addDebugEvent(DebugEvent(
+                    timestamp = timestamp,
+                    type = EventType.HIT_DETECTED,
+                    label = "HIT DETECTED",
+                    details = "Raw timestamp: $timestamp"
+                ))
+                handleOnsetDetected(timestamp)
+            }
+        }
+
+        // Start detecting hits
         onsetDetector.startDetection(viewModelScope)
 
+        // Update UI to Active state
         _uiState.value = PracticeUiState.Active(
             currentCategory = AccuracyCategory.GREEN,
             hitCount = 0,
             elapsedTimeMs = 0L,
-            bpm = bpm
+            bpm = bpm,
+            sessionStartTime = sessionStartTime
         )
 
         // Start timer to update elapsed time
@@ -113,7 +211,7 @@ class PracticeViewModel(
             val session = Session(
                 timestamp = sessionStartTime,
                 durationMs = durationMs,
-                actualDurationMs = 0L, // Will update when session ends
+                actualDurationMs = 0L,
                 bpm = bpm,
                 surfaceType = "DRUM_KIT",
                 totalHits = 0,
@@ -137,7 +235,7 @@ class PracticeViewModel(
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
             while (true) {
-                delay(100) // Update every 100ms
+                delay(100)
 
                 val currentState = _uiState.value
                 if (currentState is PracticeUiState.Active) {
@@ -147,6 +245,30 @@ class PracticeViewModel(
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Helper to find closest beat distance
+     */
+    private fun findClosestBeat(timestamp: Long): Long {
+        if (actualBeatTimes.isEmpty()) return Long.MAX_VALUE
+        return actualBeatTimes.minByOrNull { kotlin.math.abs(it - timestamp) }
+            ?.let { kotlin.math.abs(it - timestamp) } ?: Long.MAX_VALUE
+    }
+
+    /**
+     * Checks if a detected onset is likely a metronome click.
+     * Uses ACTUAL click times, not expected times.
+     */
+    private fun isMetronomeClick(timestamp: Long): Boolean {
+        if (actualBeatTimes.isEmpty()) return false
+
+        val threshold = 30L  // 30ms window around actual clicks
+
+        return actualBeatTimes.any { actualBeat ->
+            val difference = kotlin.math.abs(timestamp - actualBeat)
+            difference < threshold
         }
     }
 
@@ -167,7 +289,17 @@ class PracticeViewModel(
         val result = analyzer.analyzeHit(timestamp, sessionStartTime)
         hitResults.add(result)
 
-        Log.d(TAG, "Result - category=${result.accuracyCategory}, error=${result.timingErrorMs.toInt()}ms")
+        val beatNumber = findNearestBeatNumber(timestamp)
+
+        // Debug: Log analysis result
+        addDebugEvent(DebugEvent(
+            timestamp = timestamp,
+            type = EventType.ANALYSIS_RESULT,
+            label = "ANALYSIS: ${result.accuracyCategory}",
+            details = "Error: ${result.timingErrorMs.toInt()}ms, Beat: $beatNumber"
+        ))
+
+        Log.d(TAG, "Result - category=${result.accuracyCategory}, error=${result.timingErrorMs.toInt()}ms, beat=$beatNumber")
         Log.d(TAG, "==================")
 
         // Save hit to database
@@ -185,6 +317,15 @@ class PracticeViewModel(
                 hitCount = hitResults.size
             )
         }
+    }
+
+    /**
+     * Helper to find beat number
+     */
+    private fun findNearestBeatNumber(timestamp: Long): Int {
+        val timeSinceStart = (timestamp - sessionStartTime).toDouble()
+        val msBetweenBeats = 60000.0 / bpm
+        return kotlin.math.round(timeSinceStart / msBetweenBeats).toInt()
     }
 
     /**
@@ -235,7 +376,6 @@ class PracticeViewModel(
         timerJob?.cancel()
         onsetDetector.stopDetection()
         metronomeEngine.stop()
-        // Could implement resume functionality
     }
 
     override fun onCleared() {
@@ -254,11 +394,14 @@ sealed class PracticeUiState {
     object Idle : PracticeUiState()
     object Ready : PracticeUiState()
 
+    data class Countdown(val countdownValue: Int) : PracticeUiState()
+
     data class Active(
         val currentCategory: AccuracyCategory,
         val hitCount: Int,
         val elapsedTimeMs: Long,
-        val bpm: Int
+        val bpm: Int,
+        val sessionStartTime: Long = 0L
     ) : PracticeUiState()
 
     data class Completed(val stats: SessionStats) : PracticeUiState()
