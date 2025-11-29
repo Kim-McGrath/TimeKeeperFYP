@@ -29,8 +29,8 @@ class OnsetDetector(
     private var audioRecord: AudioRecord? = null
     private var processingJob: Job? = null
     private var isRecording = false
-    private var audioStartTime: Long = 0L  // ✅ ADD: Track when audio capture started
-    private var totalSamplesProcessed: Long = 0  // ✅ ADD: Track sample position
+    private var audioStartTime: Long = 0L
+    private var totalSamplesProcessed: Long = 0
 
     // Callback for when an onset (hit) is detected
     var onOnsetDetected: ((timestamp: Long) -> Unit)? = null
@@ -82,8 +82,8 @@ class OnsetDetector(
             return
         }
 
-        audioStartTime = System.currentTimeMillis()  // ✅ Record start time
-        totalSamplesProcessed = 0  // ✅ Reset sample counter
+        audioStartTime = System.currentTimeMillis()
+        totalSamplesProcessed = 0
 
         audioRecord?.let { record ->
             try {
@@ -150,16 +150,18 @@ class OnsetDetector(
             sampleRate.toFloat(),
             bufferSize,
             OnsetHandler { timeInSeconds, _ ->
-                // ✅ FIXED: Calculate actual timestamp from audio position
-                val samplePosition = totalSamplesProcessed + (timeInSeconds * sampleRate).toLong()
-                val audioElapsedMs = (samplePosition * 1000.0 / sampleRate).toLong()
-                val actualTimestamp = audioStartTime + audioElapsedMs
+                // ✅ CRITICAL FIX: Calculate timestamp from CURRENT wall-clock time
+                // TarsosDSP's timeInSeconds is relative to the start of processing,
+                // but by the time we receive this callback, we're already
+                // several buffers ahead. We need to use NOW.
+
+                val actualTimestamp = System.currentTimeMillis()
 
                 if (isRecording) {
                     onOnsetDetected?.invoke(actualTimestamp)
-                    Log.d(TAG, "Onset detected: audioTime=${timeInSeconds}s, " +
-                            "samplePos=$samplePosition, " +
-                            "timestamp=$actualTimestamp")
+                    Log.d(TAG, "Onset detected: tarsosDSPTime=${timeInSeconds}s, " +
+                            "actualTimestamp=$actualTimestamp, " +
+                            "timeSinceStart=${actualTimestamp - audioStartTime}ms")
                 }
             },
             sensitivity,
@@ -175,7 +177,7 @@ class OnsetDetector(
                     floatBuffer[i] = audioBuffer[i] / 32768.0f
                 }
 
-                // ✅ Track total samples processed
+                // Track total samples (for debugging if needed)
                 totalSamplesProcessed += readResult
 
                 val audioEvent = AudioEvent(audioFormat).apply {
@@ -194,12 +196,5 @@ class OnsetDetector(
 
             yield()
         }
-    }
-
-    /**
-     * Updates sensitivity settings.
-     */
-    fun updateSensitivity(newSensitivity: Double, newThreshold: Double) {
-        Log.d(TAG, "Sensitivity update requested: $newSensitivity, threshold: $newThreshold")
     }
 }
