@@ -76,3 +76,23 @@ Student Name: Kim McGrath
 Student ID: D22127059  
 Supervisor: Emma Murphy  
 Institution: Technological University Dublin
+
+Academic References
+This project builds upon established research in rhythm perception and audio processing:
+Repp, B. H., & Su, Y. H. (2013). Sensorimotor synchronization: A review of recent research (2006–2012). Psychonomic Bulletin & Review, 20(3), 403-452.
+[Informed timing threshold design and asymmetric tolerance for early/late hits]
+Miendlarzewska, E. A., & Trost, W. J. (2014). How musical training affects cognitive development: Rhythm, reward and other modulating variables. Frontiers in Neuroscience, 7, 279.
+[Cognitive benefits of rhythm training that motivated the project]
+Duggan, B. (2010). TunePal: An iPhone Application for Session Musicians. Proceedings of the Sound and Music Computing Conference 2010.
+[Demonstrated feasibility of mobile audio processing for musical applications]
+
+Technical Resources
+TarsosDSP Library (v2.5) by Joren Six: Open-source audio processing framework used for onset detection
+https://github.com/JorenSix/TarsosDSP
+
+AI Assistance
+Claude AI was used for:
+Understanding audio pipeline architecture and metronome synchronization timing
+Debugging AudioTrack latency compensation strategies
+
+All core algorithms (timing analysis, onset detection integration, metronome engine) were designed and implemented without AI.
