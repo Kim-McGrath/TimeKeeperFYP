@@ -6,13 +6,10 @@ import com.d22127059.timekeeperproto.domain.model.TimingResult
 import kotlin.math.abs
 import kotlin.math.round
 
-/**
- * Core business logic for analyzing drum hit timing accuracy.
- * Compares detected hits against expected metronome beats and categorizes accuracy.
- *
- * Based on research showing listeners judge early deviations more harshly than late ones
- * (Repp & Su, 2013), asymmetric thresholds are applied.
- */
+// Analyses drum hit timing accuracy by comparing detected hits against expected metronome beats
+// The systemLatencyMs parameter exists for potential future use with differing device latency
+// but is currently unused, as latency is already properly handled in MetronomeEngine and OnsetDetector
+
 class TimingAnalyzer(
     private val bpm: Int,
     private val systemLatencyMs: Long = 0L
@@ -23,15 +20,17 @@ class TimingAnalyzer(
 
     private val msBetweenBeats: Double = 60000.0 / bpm
 
+    // Analyses a single hit and determines its timing accuracy
+    // hitTimestamp: When the hit was detected (absolute time)
+    // sessionStartTime: When the session started (absolute time)
     fun analyzeHit(hitTimestamp: Long, sessionStartTime: Long): TimingResult {
-        // Use the hit timestamp as-is (it's already compensated in OnsetDetector)
         val timeSinceStart = (hitTimestamp - sessionStartTime).toDouble()
 
-        // Find the nearest beat
+        // Find which beat this hit is closest to
         val nearestBeatNumber = round(timeSinceStart / msBetweenBeats).toLong()
         val expectedBeatTimestamp = sessionStartTime + (nearestBeatNumber * msBetweenBeats).toLong()
 
-        // Calculate timing error
+        // Calculate timing error (positive = late, negative = early)
         val timingErrorMs = (hitTimestamp - expectedBeatTimestamp).toDouble()
 
         val category = AccuracyCategory.fromTimingError(timingErrorMs)
@@ -50,17 +49,11 @@ class TimingAnalyzer(
         )
     }
 
-    /**
-     * Generates expected beat timestamps for the entire session.
-     * Useful for metronome visualization and pre-calculating beat positions.
-     *
-     * @param sessionStartTime Session start timestamp (beat 0)
-     * @param durationMs Session duration in milliseconds
-     * @return List of expected beat timestamps
-     */
+    // Generates a list of expected beat timestamps for the entire session
+    // for metronome visualisation and precalculating beat positions
     fun generateExpectedBeats(sessionStartTime: Long, durationMs: Long): List<Long> {
         val beats = mutableListOf<Long>()
-        var currentBeatTime = sessionStartTime  // ✅ Start at sessionStartTime (beat 0)
+        var currentBeatTime = sessionStartTime
         val sessionEndTime = sessionStartTime + durationMs
 
         while (currentBeatTime <= sessionEndTime) {
@@ -71,13 +64,8 @@ class TimingAnalyzer(
         return beats
     }
 
-    /**
-     * Calculates aggregate statistics from a list of timing results.
-     * Used for post-session reporting.
-     *
-     * @param results List of all hits in the session
-     * @return Map containing accuracy percentage, hit counts by category, and timing patterns
-     */
+    // Calculates aggregate statistics from a list of timing results
+    // Used for post-session reporting and identifying timing tendencies
     fun calculateSessionStats(results: List<TimingResult>): SessionStats {
         if (results.isEmpty()) {
             return SessionStats(
@@ -96,11 +84,11 @@ class TimingAnalyzer(
         val yellowCount = results.count { it.accuracyCategory == AccuracyCategory.YELLOW }
         val redCount = results.count { it.accuracyCategory == AccuracyCategory.RED }
 
-        // Accuracy percentage: green + yellow are "acceptable"
+        // Accuracy: percentage of hits that are green or yellow
         val acceptableHits = greenCount + yellowCount
         val accuracyPercentage = (acceptableHits.toDouble() / results.size) * 100
 
-        // Calculate average timing error to detect rushing/dragging
+        // Average timing error indicates rushing (negative) or dragging (positive)
         val avgTimingError = results.map { it.timingErrorMs }.average()
 
         Log.d(TAG, "Session Stats: total=${results.size}, green=$greenCount, yellow=$yellowCount, " +
@@ -113,15 +101,12 @@ class TimingAnalyzer(
             yellowHits = yellowCount,
             redHits = redCount,
             averageTimingError = avgTimingError,
-            tendencyToRush = avgTimingError < -10.0, // Consistently early
-            tendencyToDrag = avgTimingError > 10.0   // Consistently late
+            tendencyToRush = avgTimingError < -10.0,
+            tendencyToDrag = avgTimingError > 10.0
         )
     }
 }
 
-/**
- * Data class representing aggregated session statistics.
- */
 data class SessionStats(
     val totalHits: Int,
     val accuracyPercentage: Double,

@@ -7,6 +7,10 @@ import android.util.Log
 import kotlinx.coroutines.*
 import kotlin.math.sin
 
+
+ //Generates and plays metronome clicks at a specified BPM
+ //Uses AudioTrack to synthesise click sounds in realtime
+
 class MetronomeEngine {
     companion object {
         private const val TAG = "MetronomeEngine"
@@ -14,8 +18,8 @@ class MetronomeEngine {
         private const val CLICK_DURATION_MS = 50
         private const val CLICK_FREQUENCY_HZ = 1000.0
 
-        // ✅ CRITICAL: AudioTrack output latency compensation
-        // This represents the delay between write() and actual audio playback
+        // AudioTrack output latency - time between write() call and actual speaker playback
+        // Adjust for different devices? 280 for emulator
         private const val AUDIO_OUTPUT_LATENCY_MS = 280L
     }
 
@@ -24,6 +28,7 @@ class MetronomeEngine {
     private var isPlaying = false
     private var bpm: Int = 120
 
+    // Callback invoked when each click is played (playback time, not write time)
     var onClickPlayed: ((clickTime: Long, beatNumber: Int) -> Unit)? = null
 
     private val clickSound: ShortArray by lazy {
@@ -57,18 +62,22 @@ class MetronomeEngine {
                 .build()
 
             if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioTrack not initialized properly")
+                Log.e(TAG, "AudioTrack not initialised properly")
                 return false
             }
 
-            Log.d(TAG, "MetronomeEngine initialized successfully")
+            Log.d(TAG, "MetronomeEngine initialised successfully")
             return true
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing MetronomeEngine", e)
+            Log.e(TAG, "Error initialising MetronomeEngine", e)
             return false
         }
     }
+
+
+     // Starts the metronome at the specified BPM (100 for demo)
+     // Returns the timestamp when beat 0 will be heard by the user
 
     fun start(bpm: Int, coroutineScope: CoroutineScope): Long {
         if (isPlaying) {
@@ -84,32 +93,31 @@ class MetronomeEngine {
                 track.play()
                 isPlaying = true
 
-                // ✅ Record write time
+                // Write beat 0 immediately
                 val writeTime = System.currentTimeMillis()
                 playClick(track)
 
-                // ✅ CRITICAL: Add latency to get actual playback time
+                // Account for output latency to get actual playback time
                 val sessionStartTime = writeTime + AUDIO_OUTPUT_LATENCY_MS
                 onClickPlayed?.invoke(sessionStartTime, 0)
 
                 Log.d(TAG, "CLICK beat 0 written at ${writeTime}ms, plays at ${sessionStartTime}ms (latency: ${AUDIO_OUTPUT_LATENCY_MS}ms)")
 
-                // ✅ Launch coroutine for remaining beats
+                // Schedule remaining beats in background coroutine
                 metronomeJob = coroutineScope.launch(Dispatchers.IO) {
                     var beatNumber = 1
-                    // ✅ Schedule next click based on PLAYBACK time (not write time)
                     var nextClickTime = sessionStartTime + intervalMs
 
                     while (isPlaying) {
                         val currentTime = System.currentTimeMillis()
-                        // ✅ We need to WRITE the audio BEFORE it should play
+                        // Calculate when to write (accounting for output latency)
                         val timeUntilWrite = nextClickTime - AUDIO_OUTPUT_LATENCY_MS - currentTime
 
                         if (timeUntilWrite <= 0) {
                             val writeTimestamp = System.currentTimeMillis()
                             playClick(track)
 
-                            // ✅ Report PLAYBACK time (write time + latency)
+                            // Report playback time (write + latency), not write time
                             val playbackTimestamp = writeTimestamp + AUDIO_OUTPUT_LATENCY_MS
                             onClickPlayed?.invoke(playbackTimestamp, beatNumber)
 
@@ -131,7 +139,7 @@ class MetronomeEngine {
                 isPlaying = false
             }
         } ?: run {
-            Log.e(TAG, "AudioTrack not initialized")
+            Log.e(TAG, "AudioTrack not initialised")
         }
 
         return System.currentTimeMillis()
@@ -167,6 +175,8 @@ class MetronomeEngine {
         }
     }
 
+     // Generates a 1kHz sine wave with exponential decay envelope
+     // Creates a sharp "click" sound suitable for metronome
     private fun generateClickSound(): ShortArray {
         val samples = (SAMPLE_RATE * CLICK_DURATION_MS / 1000.0).toInt()
         val buffer = ShortArray(samples)

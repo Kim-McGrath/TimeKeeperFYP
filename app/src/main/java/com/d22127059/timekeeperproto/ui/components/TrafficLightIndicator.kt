@@ -1,6 +1,5 @@
 package com.d22127059.timekeeperproto.ui.components
 
-
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*

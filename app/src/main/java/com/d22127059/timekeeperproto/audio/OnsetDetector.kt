@@ -12,6 +12,8 @@ import be.tarsos.dsp.onsets.OnsetHandler
 import be.tarsos.dsp.onsets.PercussionOnsetDetector
 import kotlinx.coroutines.*
 
+ // Detects drum hits using microphone input and TarsosDSPs percussion onset detection.
+
 class OnsetDetector(
     private val sampleRate: Int = 44100,
     private val bufferSize: Int = 2048,
@@ -54,19 +56,22 @@ class OnsetDetector(
             )
 
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord not initialized properly")
+                Log.e(TAG, "AudioRecord not initialised properly")
                 return false
             }
 
-            Log.d(TAG, "OnsetDetector initialized: sampleRate=$sampleRate, bufferSize=$actualBufferSize")
+            Log.d(TAG, "OnsetDetector initialised: sampleRate=$sampleRate, bufferSize=$actualBufferSize")
             return true
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing OnsetDetector", e)
+            Log.e(TAG, "Error initialising OnsetDetector", e)
             return false
         }
     }
 
+
+     // Starts onset detection.
+     // @param sessionStartTime When the session started (for logging/debugging only)
     fun startDetection(sessionStartTime: Long, coroutineScope: CoroutineScope) {
         if (isRecording) {
             Log.w(TAG, "Already recording")
@@ -75,7 +80,7 @@ class OnsetDetector(
 
         audioRecord?.let { record ->
             try {
-                // ✅ CRITICAL FIX: Record ACTUAL recording start time (not sessionStartTime!)
+                // Record the actual time when recording starts
                 val actualRecordingStart = System.currentTimeMillis()
                 recordingStartTime = actualRecordingStart
 
@@ -92,7 +97,7 @@ class OnsetDetector(
                 isRecording = false
             }
         } ?: run {
-            Log.e(TAG, "AudioRecord not initialized")
+            Log.e(TAG, "AudioRecord not initialised")
         }
     }
 
@@ -134,8 +139,8 @@ class OnsetDetector(
             bufferSize,
             OnsetHandler { timeInSeconds, _ ->
                 if (isRecording) {
-                    // ✅ CRITICAL FIX: DON'T add latency compensation!
-                    // TarsosDSP's timestamp already includes all processing latency
+                    // TarsosDSP timestamps already include all processing latency.
+                    // Simply convert to milliseconds and add to recording start time.
                     val onsetTimeMs = (timeInSeconds * 1000.0).toLong()
                     val actualTimestamp = recordingStartTime + onsetTimeMs
 
@@ -156,6 +161,7 @@ class OnsetDetector(
             val readResult = record.read(audioBuffer, 0, bufferSize)
 
             if (readResult > 0) {
+                // Convert 16-bit samples to float range [-1.0, 1.0]
                 for (i in 0 until readResult) {
                     floatBuffer[i] = audioBuffer[i] / 32768.0f
                 }
@@ -167,10 +173,10 @@ class OnsetDetector(
                 onsetDetector.process(audioEvent)
 
             } else if (readResult == AudioRecord.ERROR_INVALID_OPERATION) {
-                Log.e(TAG, "Invalid operation while reading audio")
+                Log.e(TAG, "Invalid operation whilst reading audio")
                 break
             } else if (readResult == AudioRecord.ERROR_BAD_VALUE) {
-                Log.e(TAG, "Bad value while reading audio")
+                Log.e(TAG, "Bad value whilst reading audio")
                 break
             }
 

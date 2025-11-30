@@ -22,10 +22,7 @@ import com.d22127059.timekeeperproto.ui.screens.practice.PracticeScreen
 import com.d22127059.timekeeperproto.ui.screens.practice.PracticeViewModel
 import com.d22127059.timekeeperproto.ui.theme.TimeKeeperTheme
 
-/**
- * Main activity for TimeKeeper app.
- * Handles microphone permission and initializes the practice screen.
- */
+// Handles microphone permission and initializes the practice screen.
 class MainActivity : ComponentActivity() {
 
     private lateinit var practiceViewModel: PracticeViewModel

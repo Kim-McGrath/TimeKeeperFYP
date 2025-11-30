@@ -16,6 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+// This file is purely for debugging purposes and will NOT be part of the final app
+// This is to show hit detection works behind the scenes
 data class DebugEvent(
     val timestamp: Long,
     val type: EventType,

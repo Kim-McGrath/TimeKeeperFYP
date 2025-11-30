@@ -15,9 +15,7 @@ import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
 import com.d22127059.timekeeperproto.ui.components.DebugTimingVisualization
 import com.d22127059.timekeeperproto.ui.components.TrafficLightIndicator
 
-/**
- * Practice session screen.
- */
+// Practice session screen
 @Composable
 fun PracticeScreen(
     viewModel: PracticeViewModel,
@@ -170,7 +168,7 @@ private fun ReadyContent(onStartClick: () -> Unit) {
     }
 }
 
-// ✅ NEW: Countdown screen
+// Countdown screen
 @Composable
 private fun CountdownContent(countdownValue: Int) {
     // Animate the countdown number
@@ -222,8 +220,6 @@ private fun CountdownContent(countdownValue: Int) {
         }
     }
 }
-
-// ... rest of existing composables (ActiveSessionContent, CompletedContent, etc.) ...
 
 @Composable
 private fun ActiveSessionContent(
