@@ -186,8 +186,8 @@ class PracticeViewModel(
             }
         }
 
-        // ✅ FIXED: Use the correct method name - start() instead of startDetection()
-        onsetDetector.start(sessionStartTime, viewModelScope)
+        // ✅ Start detecting hits - ONLY ONCE with sessionStartTime
+        onsetDetector.startDetection(sessionStartTime, viewModelScope)
 
         addDebugEvent(DebugEvent(
             timestamp = System.currentTimeMillis(),
@@ -266,8 +266,8 @@ class PracticeViewModel(
     private fun isMetronomeClick(timestamp: Long): Boolean {
         if (actualBeatTimes.isEmpty()) return false
 
-        // ✅ CRITICAL: Increase threshold to 100ms
-        val threshold = 100L  // 100ms window around actual clicks
+        // ✅ PROTOTYPE: Reduced to 15ms to allow perfect hits through
+        val threshold = 15L  // 15ms - only filters metronome clicks from speakers, allows perfect drum hits
 
         val isFiltered = actualBeatTimes.any { actualBeat ->
             val difference = kotlin.math.abs(timestamp - actualBeat)
@@ -337,6 +337,7 @@ class PracticeViewModel(
                 hitCount = hitResults.size
             )
         }
+
     }
 
     /**
@@ -355,8 +356,7 @@ class PracticeViewModel(
         Log.d(TAG, "Ending session")
 
         timerJob?.cancel()
-        // ✅ FIXED: Use the correct method name - stop() instead of stopDetection()
-        onsetDetector.stop()
+        onsetDetector.stopDetection()
         metronomeEngine.stop()
 
         val analyzer = timingAnalyzer ?: return
@@ -395,8 +395,7 @@ class PracticeViewModel(
     fun pauseSession() {
         Log.d(TAG, "Pausing session")
         timerJob?.cancel()
-        // ✅ FIXED: Use the correct method name - stop() instead of stopDetection()
-        onsetDetector.stop()
+        onsetDetector.stopDetection()
         metronomeEngine.stop()
     }
 

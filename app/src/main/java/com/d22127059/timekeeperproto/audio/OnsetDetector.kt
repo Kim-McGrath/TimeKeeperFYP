@@ -20,10 +20,6 @@ class OnsetDetector(
 ) {
     companion object {
         private const val TAG = "OnsetDetector"
-
-        // ✅ CRITICAL: Audio processing latency compensation
-        // This represents the delay from audio capture to onset detection
-        private const val AUDIO_PROCESSING_LATENCY_MS = 160L
     }
 
     private var audioRecord: AudioRecord? = null
@@ -34,7 +30,7 @@ class OnsetDetector(
     var onOnsetDetected: ((timestamp: Long) -> Unit)? = null
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    fun initialize(): Boolean {  // ✅ FIXED: Added this method
+    fun initialize(): Boolean {
         try {
             val minBufferSize = AudioRecord.getMinBufferSize(
                 sampleRate,
@@ -71,17 +67,18 @@ class OnsetDetector(
         }
     }
 
-    // ✅ FIXED: Renamed from startDetection to start
-    fun start(sessionStartTime: Long, coroutineScope: CoroutineScope) {
+    fun startDetection(sessionStartTime: Long, coroutineScope: CoroutineScope) {
         if (isRecording) {
             Log.w(TAG, "Already recording")
             return
         }
 
-        recordingStartTime = sessionStartTime
-
         audioRecord?.let { record ->
             try {
+                // ✅ CRITICAL FIX: Record ACTUAL recording start time (not sessionStartTime!)
+                val actualRecordingStart = System.currentTimeMillis()
+                recordingStartTime = actualRecordingStart
+
                 record.startRecording()
                 isRecording = true
 
@@ -89,7 +86,7 @@ class OnsetDetector(
                     processAudio(record)
                 }
 
-                Log.d(TAG, "Started onset detection, sessionStart=$sessionStartTime, audioLatencyCompensation=${AUDIO_PROCESSING_LATENCY_MS}ms")
+                Log.d(TAG, "Started onset detection at $actualRecordingStart (session started at $sessionStartTime, delay=${actualRecordingStart - sessionStartTime}ms)")
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting recording", e)
                 isRecording = false
@@ -99,8 +96,7 @@ class OnsetDetector(
         }
     }
 
-    // ✅ FIXED: Renamed from stopDetection to stop
-    fun stop() {
+    fun stopDetection() {
         if (!isRecording) return
 
         isRecording = false
@@ -114,8 +110,8 @@ class OnsetDetector(
         }
     }
 
-    fun release() {  // ✅ This method exists and matches
-        stop()
+    fun release() {
+        stopDetection()
         audioRecord?.release()
         audioRecord = null
         Log.d(TAG, "Released OnsetDetector resources")
@@ -138,18 +134,17 @@ class OnsetDetector(
             bufferSize,
             OnsetHandler { timeInSeconds, _ ->
                 if (isRecording) {
-                    // ✅ REVERSED: ADD latency instead of subtracting
+                    // ✅ CRITICAL FIX: DON'T add latency compensation!
+                    // TarsosDSP's timestamp already includes all processing latency
                     val onsetTimeMs = (timeInSeconds * 1000.0).toLong()
-                    val compensatedOnsetTimeMs = onsetTimeMs + AUDIO_PROCESSING_LATENCY_MS
-                    val actualTimestamp = recordingStartTime + compensatedOnsetTimeMs
+                    val actualTimestamp = recordingStartTime + onsetTimeMs
 
                     onOnsetDetected?.invoke(actualTimestamp)
 
                     Log.d(TAG, "Onset detected: " +
                             "tarsosDSP=${String.format("%.3f", timeInSeconds)}s, " +
-                            "rawOnsetTimeMs=${onsetTimeMs}ms, " +
-                            "compensatedOnsetTimeMs=${compensatedOnsetTimeMs}ms, " +
-                            "sessionStart=$recordingStartTime, " +
+                            "onsetTimeMs=${onsetTimeMs}ms, " +
+                            "recordingStart=$recordingStartTime, " +
                             "actualTimestamp=$actualTimestamp")
                 }
             },
