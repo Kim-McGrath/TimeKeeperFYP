@@ -12,13 +12,28 @@ import be.tarsos.dsp.onsets.OnsetHandler
 import be.tarsos.dsp.onsets.PercussionOnsetDetector
 import kotlinx.coroutines.*
 
- // Detects drum hits using microphone input and TarsosDSPs percussion onset detection.
+enum class SurfaceType(val sensitivity: Double, val threshold: Double) {
+    DRUM_KIT(8.0, 0.3),
+    PRACTICE_PAD(12.0, 0.25),
+    TABLE(15.0, 0.2),
+    CUSTOM(8.0, 0.3);
+
+    companion object {
+        fun fromString(name: String): SurfaceType {
+            return when (name.uppercase()) {
+                "DRUM_KIT" -> DRUM_KIT
+                "PRACTICE_PAD" -> PRACTICE_PAD
+                "TABLE" -> TABLE
+                else -> CUSTOM
+            }
+        }
+    }
+}
 
 class OnsetDetector(
     private val sampleRate: Int = 44100,
     private val bufferSize: Int = 2048,
-    private val sensitivity: Double = 8.0,
-    private val threshold: Double = 0.3
+    initialSurfaceType: SurfaceType = SurfaceType.DRUM_KIT
 ) {
     companion object {
         private const val TAG = "OnsetDetector"
@@ -29,7 +44,18 @@ class OnsetDetector(
     private var isRecording = false
     private var recordingStartTime: Long = 0L
 
+    private var currentSurfaceType: SurfaceType = initialSurfaceType
+    private var sensitivity: Double = initialSurfaceType.sensitivity
+    private var threshold: Double = initialSurfaceType.threshold
+
     var onOnsetDetected: ((timestamp: Long) -> Unit)? = null
+
+    fun setSurfaceType(surfaceType: SurfaceType) {
+        currentSurfaceType = surfaceType
+        sensitivity = surfaceType.sensitivity
+        threshold = surfaceType.threshold
+        Log.d(TAG, "Surface type changed to $surfaceType (sensitivity=$sensitivity, threshold=$threshold)")
+    }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun initialize(): Boolean {
@@ -48,7 +74,7 @@ class OnsetDetector(
             val actualBufferSize = maxOf(bufferSize * 2, minBufferSize)
 
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION, // Enables hardware AEC
                 sampleRate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
@@ -69,9 +95,6 @@ class OnsetDetector(
         }
     }
 
-
-     // Starts onset detection.
-     // @param sessionStartTime When the session started (for logging/debugging only)
     fun startDetection(sessionStartTime: Long, coroutineScope: CoroutineScope) {
         if (isRecording) {
             Log.w(TAG, "Already recording")
@@ -80,7 +103,6 @@ class OnsetDetector(
 
         audioRecord?.let { record ->
             try {
-                // Record the actual time when recording starts
                 val actualRecordingStart = System.currentTimeMillis()
                 recordingStartTime = actualRecordingStart
 
@@ -91,22 +113,18 @@ class OnsetDetector(
                     processAudio(record)
                 }
 
-                Log.d(TAG, "Started onset detection at $actualRecordingStart (session started at $sessionStartTime, delay=${actualRecordingStart - sessionStartTime}ms)")
+                Log.d(TAG, "Started onset detection at $actualRecordingStart")
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting recording", e)
                 isRecording = false
             }
-        } ?: run {
-            Log.e(TAG, "AudioRecord not initialised")
         }
     }
 
     fun stopDetection() {
         if (!isRecording) return
-
         isRecording = false
         processingJob?.cancel()
-
         try {
             audioRecord?.stop()
             Log.d(TAG, "Stopped onset detection")
@@ -139,18 +157,9 @@ class OnsetDetector(
             bufferSize,
             OnsetHandler { timeInSeconds, _ ->
                 if (isRecording) {
-                    // TarsosDSP timestamps already include all processing latency.
-                    // Simply convert to milliseconds and add to recording start time.
                     val onsetTimeMs = (timeInSeconds * 1000.0).toLong()
                     val actualTimestamp = recordingStartTime + onsetTimeMs
-
                     onOnsetDetected?.invoke(actualTimestamp)
-
-                    Log.d(TAG, "Onset detected: " +
-                            "tarsosDSP=${String.format("%.3f", timeInSeconds)}s, " +
-                            "onsetTimeMs=${onsetTimeMs}ms, " +
-                            "recordingStart=$recordingStartTime, " +
-                            "actualTimestamp=$actualTimestamp")
                 }
             },
             sensitivity,
@@ -161,9 +170,12 @@ class OnsetDetector(
             val readResult = record.read(audioBuffer, 0, bufferSize)
 
             if (readResult > 0) {
-                // Convert 16-bit samples to float range [-1.0, 1.0]
                 for (i in 0 until readResult) {
                     floatBuffer[i] = audioBuffer[i] / 32768.0f
+                }
+
+                for (i in readResult until bufferSize) {
+                    floatBuffer[i] = 0.0f
                 }
 
                 val audioEvent = AudioEvent(audioFormat).apply {
@@ -183,4 +195,6 @@ class OnsetDetector(
             yield()
         }
     }
+
+    fun getCurrentSurfaceType(): SurfaceType = currentSurfaceType
 }

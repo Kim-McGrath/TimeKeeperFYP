@@ -69,6 +69,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.compose.runtime.livedata)
 
+    // Material Icons Extended - ADD THIS LINE
+    implementation("androidx.compose.material:material-icons-extended:1.7.5")
+
     // Room Database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
@@ -77,7 +80,7 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    // TarsosDSP for audio processing - CHANGED to use actual Maven coordinates
+    // TarsosDSP for audio processing
     implementation("be.tarsos.dsp:core:2.5")
     implementation("be.tarsos.dsp:jvm:2.5")
 
