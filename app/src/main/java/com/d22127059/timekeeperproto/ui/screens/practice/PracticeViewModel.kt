@@ -40,6 +40,8 @@ class PracticeViewModel(
     val debugEvents: StateFlow<List<DebugEvent>> = _debugEvents.asStateFlow()
 
     private var sessionStartTime: Long = 0L
+    private var pauseStartTime: Long = 0L
+    private var totalPausedMs: Long = 0L
     private var currentSessionId: Long? = null
     private var timingAnalyzer: TimingAnalyzer? = null
     private val hitResults = mutableListOf<TimingResult>()
@@ -48,7 +50,6 @@ class PracticeViewModel(
     private var intervalMs: Long = 0
 
     private var currentSurfaceType: SurfaceType = SurfaceType.DRUM_KIT
-
     private var bpm: Int = 120
     private var durationMs: Long = 300000
 
@@ -62,32 +63,18 @@ class PracticeViewModel(
     fun updateSurfaceType(surfaceType: SurfaceType) {
         currentSurfaceType = surfaceType
         onsetDetector.setSurfaceType(surfaceType)
-        addDebugEvent(DebugEvent(
-            timestamp = System.currentTimeMillis(),
-            type = EventType.ANALYSIS_RESULT,
-            label = "SURFACE TYPE CHANGED",
-            details = "New surface: $surfaceType"
-        ))
         Log.d(TAG, "Surface type updated to: $surfaceType")
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun initializeDetector() {
         Log.d(TAG, "Initialising detector and metronome")
-
         val detectorInit = onsetDetector.initialize()
         val metronomeInit = metronomeEngine.initialize()
 
         if (detectorInit && metronomeInit) {
             _uiState.value = PracticeUiState.Ready
-            val measuredLatency = metronomeEngine.getMeasuredLatency()
-            addDebugEvent(DebugEvent(
-                timestamp = System.currentTimeMillis(),
-                type = EventType.ANALYSIS_RESULT,
-                label = "INITIALIZATION COMPLETE",
-                details = "Measured audio latency: ${measuredLatency}ms, Surface: $currentSurfaceType"
-            ))
-            Log.d(TAG, "Detector and metronome initialised successfully, latency: ${measuredLatency}ms")
+            Log.d(TAG, "Initialised successfully, latency: ${metronomeEngine.getMeasuredLatency()}ms")
         } else {
             val errorMsg = when {
                 !detectorInit && !metronomeInit -> "Failed to initialise audio and metronome"
@@ -95,16 +82,17 @@ class PracticeViewModel(
                 else -> "Failed to initialise metronome"
             }
             _uiState.value = PracticeUiState.Error(errorMsg)
-            Log.e(TAG, errorMsg)
         }
     }
 
+    // durationMinutes: 0 means unlimited (user ends manually)
     fun startCountdown(bpm: Int = 100, durationMinutes: Int = 5) {
-        Log.d(TAG, "Starting countdown before session with BPM: $bpm")
+        Log.d(TAG, "Starting countdown, BPM: $bpm, duration: ${if (durationMinutes == 0) "unlimited" else "${durationMinutes}min"}")
 
         this.bpm = bpm
-        this.durationMs = durationMinutes * 60 * 1000L
+        this.durationMs = if (durationMinutes == 0) Long.MAX_VALUE else durationMinutes * 60 * 1000L
         this.intervalMs = (60000.0 / bpm).toLong()
+        this.totalPausedMs = 0L
 
         hitResults.clear()
         actualBeatTimes.clear()
@@ -120,17 +108,7 @@ class PracticeViewModel(
             ))
         }
 
-        // Start metronome with user-selected BPM
         sessionStartTime = metronomeEngine.start(bpm, viewModelScope)
-
-        addDebugEvent(DebugEvent(
-            timestamp = sessionStartTime,
-            type = EventType.ANALYSIS_RESULT,
-            label = "COUNTDOWN START",
-            details = "Metronome started, BPM: $bpm, Beat 0 at: $sessionStartTime, Surface: $currentSurfaceType"
-        ))
-
-        Log.d(TAG, "Metronome started at $bpm BPM, beat 0 at $sessionStartTime, interval: ${intervalMs}ms")
 
         viewModelScope.launch {
             delay(intervalMs)
@@ -147,7 +125,6 @@ class PracticeViewModel(
     }
 
     private fun startSessionAfterCountdown(bpm: Int, durationMinutes: Int) {
-        Log.d(TAG, "Starting active session after countdown at $bpm BPM")
         timingAnalyzer = TimingAnalyzer(bpm)
 
         onsetDetector.onOnsetDetected = { timestamp ->
@@ -166,12 +143,14 @@ class PracticeViewModel(
         onsetDetector.startDetection(sessionStartTime, viewModelScope)
 
         _uiState.value = PracticeUiState.Active(
-            currentCategory = AccuracyCategory.GREEN,
+            currentCategory = null,
             hitCount = 0,
             elapsedTimeMs = 0L,
             bpm = bpm,
+            durationMs = durationMs,
             sessionStartTime = sessionStartTime,
-            surfaceType = currentSurfaceType
+            surfaceType = currentSurfaceType,
+            isPaused = false
         )
 
         startTimer()
@@ -193,7 +172,6 @@ class PracticeViewModel(
                 tendencyToDrag = false
             )
             currentSessionId = repository.createSession(session)
-            Log.d(TAG, "Session created in DB with ID: $currentSessionId at $bpm BPM")
         }
     }
 
@@ -203,9 +181,14 @@ class PracticeViewModel(
             while (true) {
                 delay(100)
                 val currentState = _uiState.value
-                if (currentState is PracticeUiState.Active) {
-                    val elapsed = System.currentTimeMillis() - sessionStartTime
+                if (currentState is PracticeUiState.Active && !currentState.isPaused) {
+                    val elapsed = System.currentTimeMillis() - sessionStartTime - totalPausedMs
                     _uiState.value = currentState.copy(elapsedTimeMs = elapsed)
+
+                    // Auto-end if duration is set and reached
+                    if (durationMs != Long.MAX_VALUE && elapsed >= durationMs) {
+                        endSession()
+                    }
                 }
             }
         }
@@ -213,10 +196,7 @@ class PracticeViewModel(
 
     private fun isMetronomeClick(timestamp: Long): Boolean {
         if (actualBeatTimes.isEmpty()) return false
-
-        // Filter sounds within 30ms of any metronome click
         val filterWindowMs = 30L
-
         return actualBeatTimes.any { beatTime ->
             kotlin.math.abs(timestamp - beatTime) < filterWindowMs
         }
@@ -224,6 +204,11 @@ class PracticeViewModel(
 
     private fun handleOnsetDetected(timestamp: Long) {
         val analyzer = timingAnalyzer ?: return
+
+        // Don't register hits while paused
+        val currentState = _uiState.value
+        if (currentState is PracticeUiState.Active && currentState.isPaused) return
+
         val result = analyzer.analyzeHit(timestamp, sessionStartTime)
         hitResults.add(result)
 
@@ -233,13 +218,45 @@ class PracticeViewModel(
             }
         }
 
-        val currentState = _uiState.value
         if (currentState is PracticeUiState.Active) {
             _uiState.value = currentState.copy(
                 currentCategory = result.accuracyCategory,
                 hitCount = hitResults.size
             )
         }
+    }
+
+    fun pauseSession() {
+        val currentState = _uiState.value as? PracticeUiState.Active ?: return
+        if (currentState.isPaused) return
+
+        Log.d(TAG, "Pausing session")
+        pauseStartTime = System.currentTimeMillis()
+        onsetDetector.stopDetection()
+        metronomeEngine.stop()
+
+        _uiState.value = currentState.copy(isPaused = true)
+    }
+
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    fun resumeSession() {
+        val currentState = _uiState.value as? PracticeUiState.Active ?: return
+        if (!currentState.isPaused) return
+
+        Log.d(TAG, "Resuming session")
+
+        // Accumulate paused time so elapsed timer stays accurate
+        totalPausedMs += System.currentTimeMillis() - pauseStartTime
+
+        // Restart metronome and detection
+        metronomeEngine.initialize()
+        sessionStartTime = metronomeEngine.start(bpm, viewModelScope)
+
+        onsetDetector.initialize()
+        onsetDetector.setSurfaceType(currentSurfaceType)
+        onsetDetector.startDetection(sessionStartTime, viewModelScope)
+
+        _uiState.value = currentState.copy(isPaused = false)
     }
 
     fun endSession() {
@@ -256,7 +273,7 @@ class PracticeViewModel(
                 val session = repository.getSession(sessionId)
                 session?.let {
                     val updatedSession = it.copy(
-                        actualDurationMs = System.currentTimeMillis() - sessionStartTime,
+                        actualDurationMs = System.currentTimeMillis() - sessionStartTime - totalPausedMs,
                         totalHits = stats.totalHits,
                         greenHits = stats.greenHits,
                         yellowHits = stats.yellowHits,
@@ -267,18 +284,10 @@ class PracticeViewModel(
                         tendencyToDrag = stats.tendencyToDrag
                     )
                     repository.updateSession(updatedSession)
-                    Log.d(TAG, "Session updated in DB with BPM: ${it.bpm}")
                 }
                 _uiState.value = PracticeUiState.Completed(stats)
             }
         }
-    }
-
-    fun pauseSession() {
-        Log.d(TAG, "Pausing session")
-        timerJob?.cancel()
-        onsetDetector.stopDetection()
-        metronomeEngine.stop()
     }
 
     override fun onCleared() {
@@ -286,7 +295,6 @@ class PracticeViewModel(
         timerJob?.cancel()
         onsetDetector.release()
         metronomeEngine.release()
-        Log.d(TAG, "ViewModel cleared")
     }
 }
 
@@ -295,12 +303,14 @@ sealed class PracticeUiState {
     object Ready : PracticeUiState()
     data class Countdown(val countdownValue: Int) : PracticeUiState()
     data class Active(
-        val currentCategory: AccuracyCategory,
+        val currentCategory: AccuracyCategory?,
         val hitCount: Int,
         val elapsedTimeMs: Long,
         val bpm: Int,
+        val durationMs: Long,
         val sessionStartTime: Long = 0L,
-        val surfaceType: SurfaceType = SurfaceType.DRUM_KIT
+        val surfaceType: SurfaceType = SurfaceType.DRUM_KIT,
+        val isPaused: Boolean = false
     ) : PracticeUiState()
     data class Completed(val stats: SessionStats) : PracticeUiState()
     data class Error(val message: String) : PracticeUiState()

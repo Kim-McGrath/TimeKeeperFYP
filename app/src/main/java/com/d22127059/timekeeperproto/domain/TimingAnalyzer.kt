@@ -26,21 +26,22 @@ class TimingAnalyzer(
     fun analyzeHit(hitTimestamp: Long, sessionStartTime: Long): TimingResult {
         val timeSinceStart = (hitTimestamp - sessionStartTime).toDouble()
 
-        // Find which beat this hit is closest to
-        val nearestBeatNumber = round(timeSinceStart / msBetweenBeats).toLong()
-        val expectedBeatTimestamp = sessionStartTime + (nearestBeatNumber * msBetweenBeats).toLong()
+        val prevBeatNumber = Math.floor(timeSinceStart / msBetweenBeats).toLong()
+        val nextBeatNumber = prevBeatNumber + 1
 
-        // Calculate timing error (positive = late, negative = early)
-        val timingErrorMs = (hitTimestamp - expectedBeatTimestamp).toDouble()
+        val prevBeatTime = sessionStartTime + (prevBeatNumber * msBetweenBeats).toLong()
+        val nextBeatTime = sessionStartTime + (nextBeatNumber * msBetweenBeats).toLong()
+
+        val errorToPrev = Math.abs(hitTimestamp - prevBeatTime).toDouble()
+        val errorToNext = Math.abs(hitTimestamp - nextBeatTime).toDouble()
+
+        val (expectedBeatTimestamp, timingErrorMs) = if (errorToPrev <= errorToNext) {
+            Pair(prevBeatTime, (hitTimestamp - prevBeatTime).toDouble())
+        } else {
+            Pair(nextBeatTime, (hitTimestamp - nextBeatTime).toDouble())
+        }
 
         val category = AccuracyCategory.fromTimingError(timingErrorMs)
-
-        Log.d(TAG, "Hit Analysis: timeSinceStart=${timeSinceStart.toLong()}ms, " +
-                "nearestBeat=$nearestBeatNumber, " +
-                "expectedBeatTime=${expectedBeatTimestamp}ms, " +
-                "error=${timingErrorMs.toInt()}ms, " +
-                "category=$category")
-
         return TimingResult(
             hitTimestamp = hitTimestamp,
             expectedBeatTimestamp = expectedBeatTimestamp,

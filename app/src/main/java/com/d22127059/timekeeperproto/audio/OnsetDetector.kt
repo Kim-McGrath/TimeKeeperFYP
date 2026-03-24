@@ -37,6 +37,7 @@ class OnsetDetector(
 ) {
     companion object {
         private const val TAG = "OnsetDetector"
+        private const val INPUT_LATENCY_COMPENSATION_MS = 230L
     }
 
     private var audioRecord: AudioRecord? = null
@@ -158,7 +159,7 @@ class OnsetDetector(
             OnsetHandler { timeInSeconds, _ ->
                 if (isRecording) {
                     val onsetTimeMs = (timeInSeconds * 1000.0).toLong()
-                    val actualTimestamp = recordingStartTime + onsetTimeMs
+                    val actualTimestamp = recordingStartTime + onsetTimeMs + INPUT_LATENCY_COMPENSATION_MS
                     onOnsetDetected?.invoke(actualTimestamp)
                 }
             },

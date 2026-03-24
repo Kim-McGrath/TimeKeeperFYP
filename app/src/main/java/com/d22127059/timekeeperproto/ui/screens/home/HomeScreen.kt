@@ -38,11 +38,6 @@ fun HomeScreen(
             fontWeight = FontWeight.Bold
         )
 
-        Text(
-            text = "Master Your Rhythm",
-            color = Color.White.copy(alpha = 0.7f),
-            fontSize = 18.sp
-        )
 
         Spacer(modifier = Modifier.height(48.dp))
 
