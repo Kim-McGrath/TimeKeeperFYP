@@ -1,6 +1,7 @@
 package com.d22127059.timekeeperproto.ui.screens.history
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,173 +25,142 @@ import java.util.*
 @Composable
 fun HistoryScreen(
     sessions: List<Session>,
+    onSessionClick: (Long) -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = MaterialTheme.colorScheme
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF1F2937))
+            .background(colors.background)
     ) {
-        // Top App Bar
         TopAppBar(
             title = {
-                Text(
-                    "Session History",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("History", fontWeight = FontWeight.Bold, color = colors.onBackground)
             },
             navigationIcon = {
                 IconButton(onClick = onNavigateBack) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
-                    )
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = colors.onBackground)
                 }
             },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color(0xFF374151)
-            )
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
         )
 
         if (sessions.isEmpty()) {
-            // Empty state
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(32.dp)
                 ) {
-                    Text(
-                        text = "📊",
-                        fontSize = 64.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("📊", fontSize = 56.sp)
                     Text(
                         text = "No Sessions Yet",
-                        color = Color.White,
+                        color = colors.onBackground,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Complete a practice session to see your history",
-                        color = Color.White.copy(alpha = 0.7f),
+                        text = "Complete a practice session to see your history here.",
+                        color = colors.onSurfaceVariant,
                         fontSize = 14.sp
                     )
                 }
             }
         } else {
-            Column(
-                modifier = Modifier.fillMaxSize()
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Accuracy Graph
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                        .padding(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF374151)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Accuracy Trend",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Simple bar graph
-                        AccuracyGraph(
-                            sessions = sessions.takeLast(10),
-                            modifier = Modifier.fillMaxSize()
-                        )
+                // Trend graph at top if enough data
+                if (sessions.size >= 2) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = colors.surface),
+                            shape = RoundedCornerShape(20.dp),
+                            elevation = CardDefaults.cardElevation(0.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(20.dp)) {
+                                Text(
+                                    text = "Accuracy Trend",
+                                    color = colors.onBackground,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                AccuracyGraph(
+                                    sessions = sessions.takeLast(10),
+                                    modifier = Modifier.fillMaxWidth().height(100.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Sessions List
-                Text(
-                    text = "All Sessions (${sessions.size})",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(sessions.reversed()) { session ->
-                        SessionCard(session = session)
-                    }
+                item {
+                    Text(
+                        text = "${sessions.size} Sessions",
+                        color = colors.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
+
+                items(sessions) { session ->
+                    SessionCard(
+                        session = session,
+                        onClick = { onSessionClick(session.id) }
+                    )
+                }
+
+                item { Spacer(modifier = Modifier.height(16.dp)) }
             }
         }
     }
 }
 
 @Composable
-private fun AccuracyGraph(
-    sessions: List<Session>,
-    modifier: Modifier = Modifier
-) {
-    if (sessions.isEmpty()) {
-        Box(
-            modifier = modifier,
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Not enough data",
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 14.sp
-            )
-        }
-        return
-    }
+private fun AccuracyGraph(sessions: List<Session>, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    if (sessions.isEmpty()) return
 
     Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.Bottom
     ) {
         sessions.forEach { session ->
-            val heightFraction = (session.accuracyPercentage / 100.0).toFloat()
-
+            val fraction = (session.accuracyPercentage / 100.0).toFloat().coerceIn(0.05f, 1f)
+            val barColor = when {
+                session.accuracyPercentage >= 80 -> colors.primary
+                session.accuracyPercentage >= 60 -> colors.secondary
+                else -> colors.error
+            }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.weight(1f)
+                verticalArrangement = Arrangement.Bottom,
+                modifier = Modifier.weight(1f).fillMaxHeight()
             ) {
-                // Bar
                 Box(
-                    modifier = Modifier
-                        .width(20.dp)
-                        .fillMaxHeight(heightFraction)
-                        .background(
-                            color = when {
-                                session.accuracyPercentage >= 80 -> Color(0xFF10B981)
-                                session.accuracyPercentage >= 60 -> Color(0xFFF59E0B)
-                                else -> Color(0xFFEF4444)
-                            },
-                            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
-                        )
-                )
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(fraction)
+                            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                            .background(barColor.copy(alpha = 0.85f))
+                    )
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${session.accuracyPercentage.toInt()}%",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 10.sp
+                    text = "${session.accuracyPercentage.toInt()}",
+                    color = colors.onSurfaceVariant,
+                    fontSize = 9.sp
                 )
             }
         }
@@ -197,93 +168,89 @@ private fun AccuracyGraph(
 }
 
 @Composable
-private fun SessionCard(session: Session) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF374151)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = formatDate(session.timestamp),
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "${session.bpm} BPM • ${session.surfaceType}",
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 12.sp
-                    )
-                }
+private fun SessionCard(session: Session, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val accuracyColor = when {
+        session.accuracyPercentage >= 80 -> colors.primary
+        session.accuracyPercentage >= 60 -> colors.secondary
+        else -> colors.error
+    }
 
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(accuracyColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
                     text = "${session.accuracyPercentage.toInt()}%",
-                    color = when {
-                        session.accuracyPercentage >= 80 -> Color(0xFF10B981)
-                        session.accuracyPercentage >= 60 -> Color(0xFFF59E0B)
-                        else -> Color(0xFFEF4444)
-                    },
-                    fontSize = 32.sp,
+                    color = accuracyColor,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
-            // Hit breakdown
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                HitStat("Perfect", session.greenHits, Color(0xFF10B981))
-                HitStat("Good", session.yellowHits, Color(0xFFF59E0B))
-                HitStat("Off", session.redHits, Color(0xFFEF4444))
-            }
-
-            // Timing tendency
-            if (session.tendencyToRush || session.tendencyToDrag) {
-                Spacer(modifier = Modifier.height(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (session.tendencyToRush) "⚡ Rushing" else "🐌 Dragging",
-                    color = Color(0xFFF59E0B),
+                    text = formatDate(session.timestamp),
+                    color = colors.onBackground,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${session.bpm} BPM · ${formatDuration(session.actualDurationMs)} · ${session.surfaceType.replace("_", " ")}",
+                    color = colors.onSurfaceVariant,
                     fontSize = 12.sp
                 )
+                Spacer(modifier = Modifier.height(6.dp))
+                HitBreakdownBar(
+                    green = session.greenHits,
+                    yellow = session.yellowHits,
+                    red = session.redHits,
+                    total = session.totalHits
+                )
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("›", color = colors.onSurfaceVariant, fontSize = 22.sp)
         }
     }
 }
 
 @Composable
-private fun HitStat(label: String, count: Int, color: Color) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+private fun HitBreakdownBar(green: Int, yellow: Int, red: Int, total: Int) {
+    if (total == 0) return
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
     ) {
-        Text(
-            text = count.toString(),
-            color = color,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.6f),
-            fontSize = 11.sp
-        )
+        if (green > 0) Box(modifier = Modifier.weight(green.toFloat()).fillMaxHeight().background(colors.primary))
+        if (yellow > 0) Box(modifier = Modifier.weight(yellow.toFloat()).fillMaxHeight().background(colors.secondary))
+        if (red > 0) Box(modifier = Modifier.weight(red.toFloat()).fillMaxHeight().background(colors.error))
     }
 }
 
-private fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault())
-    return sdf.format(Date(timestamp))
+private fun formatDate(timestamp: Long): String =
+    SimpleDateFormat("dd MMM yyyy · HH:mm", Locale.getDefault()).format(Date(timestamp))
+
+private fun formatDuration(ms: Long): String {
+    val s = ms / 1000
+    return if (s < 60) "${s}s" else "${s / 60}m ${s % 60}s"
 }
