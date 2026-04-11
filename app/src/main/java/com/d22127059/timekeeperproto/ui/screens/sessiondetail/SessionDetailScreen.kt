@@ -184,7 +184,6 @@ fun SessionDetailScreen(
                             s.tendencyToDrag
                         )
                         TendencyCard(
-                            emoji = analysis.emoji,
                             title = analysis.title,
                             description = analysis.description,
                             tip = analysis.tip,
@@ -384,7 +383,6 @@ private fun TimingMeter(averageErrorMs: Double) {
 
 @Composable
 private fun TendencyCard(
-    emoji: String,
     title: String,
     description: String,
     tip: String,
@@ -399,31 +397,21 @@ private fun TendencyCard(
             .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(emoji, fontSize = 24.sp)
-                Text(title, color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            }
+            Text(title, color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Text(description, color = colors.onBackground, fontSize = 14.sp, lineHeight = 20.sp)
             Spacer(modifier = Modifier.height(4.dp))
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(color.copy(alpha = 0.08f))
-                    .padding(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.Top
+                    .padding(10.dp)
             ) {
-                Text("💡", fontSize = 14.sp)
                 Text(
-                    text = tip,
+                    text = "Tip: $tip",
                     color = colors.onSurfaceVariant,
                     fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.weight(1f)
+                    lineHeight = 18.sp
                 )
             }
         }
@@ -472,7 +460,6 @@ private fun HitRow(hit: Hit, modifier: Modifier = Modifier) {
 // ── Analysis logic ─────────────────────────────────────────────────────────────
 
 private data class TendencyAnalysis(
-    val emoji: String,
     val title: String,
     val description: String,
     val tip: String,
@@ -492,41 +479,34 @@ private fun getTendencyAnalysis(
 
     return when {
         tendencyToRush -> TendencyAnalysis(
-            emoji = "⚡",
-            title = "Rushing — Playing Slightly Early",
-            description = "On average, your hits landed ${kotlin.math.abs(avgError.toInt())}ms before the beat. " +
-                    "Rushing is very common — it often happens when we anticipate the beat rather than react to it. " +
-                    "It doesn't mean you're playing fast; it means you're hitting just before the click sounds.",
-            tip = "Try focusing on the click landing first, then hitting. A useful exercise is to practise at a slower BPM " +
-                    "and consciously delay your hit until after you hear the click.",
+            title = "Playing slightly early",
+            description = "Your hits landed about ${kotlin.math.abs(avgError.toInt())}ms before the beat on average. " +
+                    "This usually happens when you anticipate the click rather than react to it. " +
+                    "It does not mean you are playing too fast overall — just catching the beat a fraction early.",
+            tip = "Try letting the click land first, then hitting. Practising at a slower speed and consciously waiting a moment longer can help train this.",
             color = blue
         )
         tendencyToDrag -> TendencyAnalysis(
-            emoji = "🐢",
-            title = "Dragging — Playing Slightly Late",
-            description = "On average, your hits landed ${avgError.toInt()}ms after the beat. " +
-                    "Dragging often comes from being too relaxed or over-thinking each hit. " +
-                    "A small amount of drag (under 30ms) is actually very natural and common in live music.",
-            tip = "Try practising with a slightly faster BPM than feels comfortable. This trains you to react quicker. " +
-                    "Focus on playing with the first part of the click sound rather than waiting for it to finish.",
+            title = "Playing slightly late",
+            description = "Your hits landed about ${avgError.toInt()}ms after the beat on average. " +
+                    "A small amount of this (under 30ms) is very common and natural. " +
+                    "If it is more noticeable, it can come from being too relaxed or taking too long to react.",
+            tip = "Try practising at a slightly faster speed than feels comfortable. This trains quicker reactions. Aim to hit at the very start of each click rather than waiting for it to finish.",
             color = secondaryColor
         )
         kotlin.math.abs(avgError) < 10 -> TendencyAnalysis(
-            emoji = "🎯",
-            title = "Excellent Timing",
-            description = "Your average timing error was only ${avgError.toInt()}ms — that's essentially on the beat. " +
-                    "This is the target zone for any drummer. Consistency at this level takes real practice.",
-            tip = "To maintain this, try increasing the BPM gradually or practising with a more demanding surface type.",
+            title = "Excellent timing",
+            description = "Your average error was only ${avgError.toInt()}ms — that is right on the beat. " +
+                    "This level of consistency is the goal for any drummer and takes real practice to achieve.",
+            tip = "To keep improving, try increasing the speed gradually or switching to a harder surface type.",
             color = primaryColor
         )
         else -> TendencyAnalysis(
-            emoji = "📊",
-            title = "Mixed Timing",
+            title = "Mixed timing",
             description = "Your hits were spread across both early and late, averaging ${avgError.toInt()}ms. " +
-                    "This is normal, especially when starting out. Focus on listening carefully to each click " +
-                    "before hitting rather than trying to predict when it will come.",
-            tip = "Start at a lower BPM (60–80) and focus purely on matching the click. " +
-                    "Accuracy at slow tempos builds the foundation for accuracy at faster ones.",
+                    "This is completely normal when starting out. " +
+                    "Focus on listening to each click before hitting rather than trying to guess when it will come.",
+            tip = "Start at 60 or 80 BPM and focus on matching each click as closely as possible. Getting accurate at slow speeds makes faster speeds easier.",
             color = errorColor
         )
     }

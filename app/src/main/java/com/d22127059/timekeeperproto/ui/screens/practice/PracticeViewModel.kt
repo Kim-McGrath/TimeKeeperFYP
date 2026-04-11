@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+
 class PracticeViewModel(
     private val onsetDetector: OnsetDetector,
     private val metronomeEngine: MetronomeEngine,
@@ -31,6 +32,7 @@ class PracticeViewModel(
 
     companion object {
         private const val TAG = "PracticeViewModel"
+        private const val TAP_LATENCY_COMPENSATION_MS = 200L
     }
 
     private val _uiState = MutableStateFlow<PracticeUiState>(PracticeUiState.Idle)
@@ -46,12 +48,15 @@ class PracticeViewModel(
     private var timingAnalyzer: TimingAnalyzer? = null
     private val hitResults = mutableListOf<TimingResult>()
     private var timerJob: Job? = null
-    private val actualBeatTimes = mutableListOf<Long>()
+    private val actualBeatTimes = java.util.concurrent.CopyOnWriteArrayList<Long>()
     private var intervalMs: Long = 0
 
     private var currentSurfaceType: SurfaceType = SurfaceType.DRUM_KIT
     private var bpm: Int = 120
     private var durationMs: Long = 300000
+
+    // Tap mode — replaces microphone with screen tap
+    private var tapModeEnabled: Boolean = false
 
     private fun addDebugEvent(event: DebugEvent) {
         _debugEvents.value = _debugEvents.value + event
@@ -85,11 +90,11 @@ class PracticeViewModel(
         }
     }
 
-    // durationMinutes: 0 means unlimited (user ends manually)
-    fun startCountdown(bpm: Int = 100, durationMinutes: Int = 5) {
-        Log.d(TAG, "Starting countdown, BPM: $bpm, duration: ${if (durationMinutes == 0) "unlimited" else "${durationMinutes}min"}")
+    fun startCountdown(bpm: Int = 100, durationMinutes: Int = 5, tapMode: Boolean = false) {
+        Log.d(TAG, "Starting countdown, BPM: $bpm, tapMode: $tapMode")
 
         this.bpm = bpm
+        this.tapModeEnabled = tapMode
         this.durationMs = if (durationMinutes == 0) Long.MAX_VALUE else durationMinutes * 60 * 1000L
         this.intervalMs = (60000.0 / bpm).toLong()
         this.totalPausedMs = 0L
@@ -127,20 +132,23 @@ class PracticeViewModel(
     private fun startSessionAfterCountdown(bpm: Int, durationMinutes: Int) {
         timingAnalyzer = TimingAnalyzer(bpm)
 
-        onsetDetector.onOnsetDetected = { timestamp ->
-            val filtered = isMetronomeClick(timestamp)
-            if (!filtered) {
-                addDebugEvent(DebugEvent(
-                    timestamp = timestamp,
-                    type = EventType.HIT_DETECTED,
-                    label = "HIT DETECTED",
-                    details = "Raw timestamp: $timestamp"
-                ))
-                handleOnsetDetected(timestamp)
+        if (!tapModeEnabled) {
+            // Normal microphone mode
+            onsetDetector.onOnsetDetected = { timestamp ->
+                val filtered = isMetronomeClick(timestamp)
+                if (!filtered) {
+                    addDebugEvent(DebugEvent(
+                        timestamp = timestamp,
+                        type = EventType.HIT_DETECTED,
+                        label = "HIT DETECTED",
+                        details = "Raw timestamp: $timestamp"
+                    ))
+                    handleOnsetDetected(timestamp)
+                }
             }
+            onsetDetector.startDetection(sessionStartTime, viewModelScope)
         }
-
-        onsetDetector.startDetection(sessionStartTime, viewModelScope)
+        // In tap mode, hits are registered via onTapHit() called from the UI
 
         _uiState.value = PracticeUiState.Active(
             currentCategory = null,
@@ -150,7 +158,8 @@ class PracticeViewModel(
             durationMs = durationMs,
             sessionStartTime = sessionStartTime,
             surfaceType = currentSurfaceType,
-            isPaused = false
+            isPaused = false,
+            tapModeEnabled = tapModeEnabled
         )
 
         startTimer()
@@ -175,6 +184,23 @@ class PracticeViewModel(
         }
     }
 
+    // Called from the UI when the user taps the screen in tap mode
+
+
+    fun onTapHit() {
+        val currentState = _uiState.value
+        if (currentState is PracticeUiState.Active && !currentState.isPaused && tapModeEnabled) {
+            val timestamp = System.currentTimeMillis() + TAP_LATENCY_COMPENSATION_MS
+            addDebugEvent(DebugEvent(
+                timestamp = timestamp,
+                type = EventType.HIT_DETECTED,
+                label = "TAP HIT",
+                details = "Screen tap at: $timestamp"
+            ))
+            handleOnsetDetected(timestamp)
+        }
+    }
+
     private fun startTimer() {
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
@@ -184,8 +210,6 @@ class PracticeViewModel(
                 if (currentState is PracticeUiState.Active && !currentState.isPaused) {
                     val elapsed = System.currentTimeMillis() - sessionStartTime - totalPausedMs
                     _uiState.value = currentState.copy(elapsedTimeMs = elapsed)
-
-                    // Auto-end if duration is set and reached
                     if (durationMs != Long.MAX_VALUE && elapsed >= durationMs) {
                         endSession()
                     }
@@ -204,8 +228,6 @@ class PracticeViewModel(
 
     private fun handleOnsetDetected(timestamp: Long) {
         val analyzer = timingAnalyzer ?: return
-
-        // Don't register hits while paused
         val currentState = _uiState.value
         if (currentState is PracticeUiState.Active && currentState.isPaused) return
 
@@ -229,12 +251,9 @@ class PracticeViewModel(
     fun pauseSession() {
         val currentState = _uiState.value as? PracticeUiState.Active ?: return
         if (currentState.isPaused) return
-
-        Log.d(TAG, "Pausing session")
         pauseStartTime = System.currentTimeMillis()
-        onsetDetector.stopDetection()
+        if (!tapModeEnabled) onsetDetector.stopDetection()
         metronomeEngine.stop()
-
         _uiState.value = currentState.copy(isPaused = true)
     }
 
@@ -242,27 +261,20 @@ class PracticeViewModel(
     fun resumeSession() {
         val currentState = _uiState.value as? PracticeUiState.Active ?: return
         if (!currentState.isPaused) return
-
-        Log.d(TAG, "Resuming session")
-
-        // Accumulate paused time so elapsed timer stays accurate
         totalPausedMs += System.currentTimeMillis() - pauseStartTime
-
-        // Restart metronome and detection
         metronomeEngine.initialize()
         sessionStartTime = metronomeEngine.start(bpm, viewModelScope)
-
-        onsetDetector.initialize()
-        onsetDetector.setSurfaceType(currentSurfaceType)
-        onsetDetector.startDetection(sessionStartTime, viewModelScope)
-
+        if (!tapModeEnabled) {
+            onsetDetector.initialize()
+            onsetDetector.setSurfaceType(currentSurfaceType)
+            onsetDetector.startDetection(sessionStartTime, viewModelScope)
+        }
         _uiState.value = currentState.copy(isPaused = false)
     }
 
     fun endSession() {
-        Log.d(TAG, "Ending session")
         timerJob?.cancel()
-        onsetDetector.stopDetection()
+        if (!tapModeEnabled) onsetDetector.stopDetection()
         metronomeEngine.stop()
 
         val analyzer = timingAnalyzer ?: return
@@ -310,7 +322,8 @@ sealed class PracticeUiState {
         val durationMs: Long,
         val sessionStartTime: Long = 0L,
         val surfaceType: SurfaceType = SurfaceType.DRUM_KIT,
-        val isPaused: Boolean = false
+        val isPaused: Boolean = false,
+        val tapModeEnabled: Boolean = false
     ) : PracticeUiState()
     data class Completed(val stats: SessionStats) : PracticeUiState()
     data class Error(val message: String) : PracticeUiState()

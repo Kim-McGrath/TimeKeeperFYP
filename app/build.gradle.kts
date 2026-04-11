@@ -3,14 +3,15 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"  // ← Changed to 2.0.21
     id("com.google.devtools.ksp") version "2.0.21-1.0.28"  // ← This version exists
+    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.timekeeperproto"
+    namespace = "com.d22127059.timekeeperproto"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.timekeeperproto"
+        applicationId = "com.d22127059.timekeeperproto"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -59,6 +60,11 @@ dependencies {
     implementation(libs.androidx.core.ktx.v1120)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-firestore-ktx")
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))
