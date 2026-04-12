@@ -112,12 +112,6 @@ fun TrafficLightIndicator(
                         radius = shapeSize / 2f,
                         center = Offset(centerX, centerY)
                     )
-                    // Sheen highlight
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.18f),
-                        radius = shapeSize / 2f * 0.6f,
-                        center = Offset(centerX - shapeSize * 0.12f, centerY - shapeSize * 0.15f)
-                    )
                 }
 
                 AccuracyCategory.YELLOW -> {
@@ -141,12 +135,6 @@ fun TrafficLightIndicator(
                         close()
                     }
                     drawPath(path = path, color = shapeColor, style = Fill)
-                    // Sheen
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.15f),
-                        radius = shapeSize * 0.22f,
-                        center = Offset(centerX - shapeSize * 0.1f, centerY - shapeSize * 0.15f)
-                    )
                 }
 
                 AccuracyCategory.RED -> {
@@ -169,12 +157,6 @@ fun TrafficLightIndicator(
                         close()
                     }
                     drawPath(path = path, color = shapeColor, style = Fill)
-                    // Sheen
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.15f),
-                        radius = shapeSize * 0.18f,
-                        center = Offset(centerX - shapeSize * 0.08f, centerY + shapeSize * 0.05f)
-                    )
                 }
             }
 

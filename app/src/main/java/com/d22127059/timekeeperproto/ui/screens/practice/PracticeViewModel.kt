@@ -41,7 +41,17 @@ class PracticeViewModel(
     private val _debugEvents = MutableStateFlow<List<DebugEvent>>(emptyList())
     val debugEvents: StateFlow<List<DebugEvent>> = _debugEvents.asStateFlow()
 
-    private var sessionStartTime: Long = 0L
+    // sessionOriginTime is the fixed reference for all timing calculations.
+    // It is set once when the session begins and never changes across pause/resume cycles.
+    // This ensures hits recorded before and after a pause are all compared against the
+    // same beat grid.
+    private var sessionOriginTime: Long = 0L
+
+    // metronomeStartTime tracks when the metronome was most recently started.
+    // After a resume, this differs from sessionOriginTime because the beat grid
+    // must be reconstructed from where it left off.
+    private var metronomeStartTime: Long = 0L
+
     private var pauseStartTime: Long = 0L
     private var totalPausedMs: Long = 0L
     private var currentSessionId: Long? = null
@@ -113,7 +123,10 @@ class PracticeViewModel(
             ))
         }
 
-        sessionStartTime = metronomeEngine.start(bpm, viewModelScope)
+        // metronomeStartTime and sessionOriginTime are both set here at session start.
+        // They only diverge after a pause/resume cycle.
+        metronomeStartTime = metronomeEngine.start(bpm, viewModelScope)
+        sessionOriginTime = metronomeStartTime
 
         viewModelScope.launch {
             delay(intervalMs)
@@ -133,7 +146,6 @@ class PracticeViewModel(
         timingAnalyzer = TimingAnalyzer(bpm)
 
         if (!tapModeEnabled) {
-            // Normal microphone mode
             onsetDetector.onOnsetDetected = { timestamp ->
                 val filtered = isMetronomeClick(timestamp)
                 if (!filtered) {
@@ -146,9 +158,8 @@ class PracticeViewModel(
                     handleOnsetDetected(timestamp)
                 }
             }
-            onsetDetector.startDetection(sessionStartTime, viewModelScope)
+            onsetDetector.startDetection(sessionOriginTime, viewModelScope)
         }
-        // In tap mode, hits are registered via onTapHit() called from the UI
 
         _uiState.value = PracticeUiState.Active(
             currentCategory = null,
@@ -156,7 +167,7 @@ class PracticeViewModel(
             elapsedTimeMs = 0L,
             bpm = bpm,
             durationMs = durationMs,
-            sessionStartTime = sessionStartTime,
+            sessionStartTime = sessionOriginTime,
             surfaceType = currentSurfaceType,
             isPaused = false,
             tapModeEnabled = tapModeEnabled
@@ -166,7 +177,7 @@ class PracticeViewModel(
 
         viewModelScope.launch {
             val session = Session(
-                timestamp = sessionStartTime,
+                timestamp = sessionOriginTime,
                 durationMs = durationMs,
                 actualDurationMs = 0L,
                 bpm = bpm,
@@ -183,9 +194,6 @@ class PracticeViewModel(
             currentSessionId = repository.createSession(session)
         }
     }
-
-    // Called from the UI when the user taps the screen in tap mode
-
 
     fun onTapHit() {
         val currentState = _uiState.value
@@ -208,7 +216,9 @@ class PracticeViewModel(
                 delay(100)
                 val currentState = _uiState.value
                 if (currentState is PracticeUiState.Active && !currentState.isPaused) {
-                    val elapsed = System.currentTimeMillis() - sessionStartTime - totalPausedMs
+                    // Elapsed time is measured from the fixed session origin,
+                    // minus however long has been spent paused.
+                    val elapsed = System.currentTimeMillis() - sessionOriginTime - totalPausedMs
                     _uiState.value = currentState.copy(elapsedTimeMs = elapsed)
                     if (durationMs != Long.MAX_VALUE && elapsed >= durationMs) {
                         endSession()
@@ -231,7 +241,9 @@ class PracticeViewModel(
         val currentState = _uiState.value
         if (currentState is PracticeUiState.Active && currentState.isPaused) return
 
-        val result = analyzer.analyzeHit(timestamp, sessionStartTime)
+        // All hits are analysed against the fixed sessionOriginTime so that
+        // pausing does not corrupt the beat grid reference.
+        val result = analyzer.analyzeHit(timestamp, sessionOriginTime)
         hitResults.add(result)
 
         currentSessionId?.let { sessionId ->
@@ -261,14 +273,24 @@ class PracticeViewModel(
     fun resumeSession() {
         val currentState = _uiState.value as? PracticeUiState.Active ?: return
         if (!currentState.isPaused) return
-        totalPausedMs += System.currentTimeMillis() - pauseStartTime
+
+        val pauseDuration = System.currentTimeMillis() - pauseStartTime
+        totalPausedMs += pauseDuration
+
+        // Re-initialise audio hardware
         metronomeEngine.initialize()
-        sessionStartTime = metronomeEngine.start(bpm, viewModelScope)
+
+        // Restart the metronome. metronomeStartTime updates to the new start,
+        // but sessionOriginTime stays fixed so the beat grid reference is preserved.
+        // The TimingAnalyzer still uses sessionOriginTime for all hit calculations.
+        metronomeStartTime = metronomeEngine.start(bpm, viewModelScope)
+
         if (!tapModeEnabled) {
             onsetDetector.initialize()
             onsetDetector.setSurfaceType(currentSurfaceType)
-            onsetDetector.startDetection(sessionStartTime, viewModelScope)
+            onsetDetector.startDetection(metronomeStartTime, viewModelScope)
         }
+
         _uiState.value = currentState.copy(isPaused = false)
     }
 
@@ -285,7 +307,7 @@ class PracticeViewModel(
                 val session = repository.getSession(sessionId)
                 session?.let {
                     val updatedSession = it.copy(
-                        actualDurationMs = System.currentTimeMillis() - sessionStartTime - totalPausedMs,
+                        actualDurationMs = System.currentTimeMillis() - sessionOriginTime - totalPausedMs,
                         totalHits = stats.totalHits,
                         greenHits = stats.greenHits,
                         yellowHits = stats.yellowHits,
