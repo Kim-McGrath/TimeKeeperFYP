@@ -294,6 +294,20 @@ class PracticeViewModel(
         _uiState.value = currentState.copy(isPaused = false)
     }
 
+    /**
+     * Resets the ViewModel back to Idle so the user can start a new session.
+     * Called when navigating away from the Completed screen.
+     */
+    fun resetSession() {
+        hitResults.clear()
+        actualBeatTimes.clear()
+        _debugEvents.value = emptyList()
+        timingAnalyzer = null
+        currentSessionId = null
+        totalPausedMs = 0L
+        _uiState.value = PracticeUiState.Idle
+    }
+
     fun endSession() {
         timerJob?.cancel()
         if (!tapModeEnabled) onsetDetector.stopDetection()

@@ -25,6 +25,7 @@ import com.d22127059.timekeeperproto.data.repository.SessionRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +57,9 @@ fun SessionDetailScreen(
         if (s == null) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         } else {
+            // Pre-compute all derived statistics once so they can be passed to sub-components
+            val derivedStats = remember(hits) { computeDerivedStats(hits) }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 32.dp)
@@ -166,6 +170,60 @@ fun SessionDetailScreen(
                     }
                 }
 
+                // Enhanced stats card — early/late, consistency, streak, best segment
+                if (hits.size >= 3) {
+                    item {
+                        SectionCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Text(
+                                "Performance Breakdown",
+                                color = colors.onBackground,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Early vs late row
+                            EarlyLateRow(
+                                earlyCount = derivedStats.earlyCount,
+                                lateCount = derivedStats.lateCount,
+                                onTimeCount = derivedStats.onTimeCount,
+                                total = hits.size
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            HorizontalDivider(color = colors.outline.copy(alpha = 0.2f))
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Consistency and streak row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                ConsistencyBadge(
+                                    label = "Consistency",
+                                    value = derivedStats.consistencyLabel,
+                                    sublabel = "±${derivedStats.standardDeviationMs.toInt()}ms spread",
+                                    color = derivedStats.consistencyColor(colors)
+                                )
+                                ConsistencyBadge(
+                                    label = "Best Streak",
+                                    value = "${derivedStats.longestGreenStreak}",
+                                    sublabel = "consecutive perfect hits",
+                                    color = colors.primary
+                                )
+                            }
+
+                            // Best segment — only meaningful if enough hits exist
+                            if (hits.size >= 9) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                HorizontalDivider(color = colors.outline.copy(alpha = 0.2f))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                BestSegmentRow(derivedStats = derivedStats)
+                            }
+                        }
+                    }
+                }
+
                 // Timing analysis card
                 item {
                     SectionCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -230,7 +288,312 @@ fun SessionDetailScreen(
     }
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Derived statistics ────────────────────────────────────────────────────────
+
+data class DerivedStats(
+    val earlyCount: Int,
+    val lateCount: Int,
+    val onTimeCount: Int,
+    val standardDeviationMs: Double,
+    val consistencyLabel: String,
+    val longestGreenStreak: Int,
+    // Best segment: index 0=first third, 1=middle, 2=final third
+    val bestSegmentIndex: Int,
+    val segmentAccuracies: List<Double>
+) {
+    @Composable
+    fun consistencyColor(colors: ColorScheme): Color = when (consistencyLabel) {
+        "Excellent" -> colors.primary
+        "Good" -> colors.secondary
+        else -> colors.error
+    }
+}
+
+private fun computeDerivedStats(hits: List<Hit>): DerivedStats {
+    if (hits.isEmpty()) {
+        return DerivedStats(0, 0, 0, 0.0, "N/A", 0, 0, listOf(0.0, 0.0, 0.0))
+    }
+
+    // Early / late / on-time counts
+    // "On time" means within ±10ms — effectively indistinguishable from the beat
+    val earlyCount = hits.count { it.timingErrorMs < -10.0 }
+    val lateCount = hits.count { it.timingErrorMs > 10.0 }
+    val onTimeCount = hits.size - earlyCount - lateCount
+
+    // Standard deviation of timing errors
+    val errors = hits.map { it.timingErrorMs }
+    val mean = errors.average()
+    val variance = errors.map { (it - mean) * (it - mean) }.average()
+    val stdDev = sqrt(variance)
+
+    val consistencyLabel = when {
+        stdDev < 30.0 -> "Excellent"
+        stdDev < 60.0 -> "Good"
+        else -> "Developing"
+    }
+
+    // Longest consecutive green streak
+    var longestStreak = 0
+    var currentStreak = 0
+    for (hit in hits) {
+        if (hit.accuracyCategory == "GREEN") {
+            currentStreak++
+            if (currentStreak > longestStreak) longestStreak = currentStreak
+        } else {
+            currentStreak = 0
+        }
+    }
+
+    // Best segment — split hits into thirds and find the most accurate portion
+    val segmentSize = hits.size / 3
+    val segmentAccuracies = if (segmentSize > 0) {
+        listOf(
+            hits.take(segmentSize),
+            hits.drop(segmentSize).take(segmentSize),
+            hits.drop(segmentSize * 2)
+        ).map { segment ->
+            if (segment.isEmpty()) 0.0
+            else {
+                val acceptable = segment.count {
+                    it.accuracyCategory == "GREEN" || it.accuracyCategory == "YELLOW"
+                }
+                (acceptable.toDouble() / segment.size) * 100.0
+            }
+        }
+    } else {
+        listOf(0.0, 0.0, 0.0)
+    }
+
+    val bestSegmentIndex = segmentAccuracies.indexOf(segmentAccuracies.max())
+
+    return DerivedStats(
+        earlyCount = earlyCount,
+        lateCount = lateCount,
+        onTimeCount = onTimeCount,
+        standardDeviationMs = stdDev,
+        consistencyLabel = consistencyLabel,
+        longestGreenStreak = longestStreak,
+        bestSegmentIndex = bestSegmentIndex,
+        segmentAccuracies = segmentAccuracies
+    )
+}
+
+// ── New sub-components ────────────────────────────────────────────────────────
+
+@Composable
+private fun EarlyLateRow(
+    earlyCount: Int,
+    lateCount: Int,
+    onTimeCount: Int,
+    total: Int
+) {
+    val colors = MaterialTheme.colorScheme
+    val blue = Color(0xFF3B82F6)
+
+    Column {
+        Text(
+            "Timing Direction",
+            color = colors.onSurfaceVariant,
+            fontSize = 12.sp
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            DirectionStat(
+                count = earlyCount,
+                total = total,
+                label = "Early",
+                sublabel = "hit before the beat",
+                color = blue
+            )
+            DirectionStat(
+                count = onTimeCount,
+                total = total,
+                label = "On Time",
+                sublabel = "within ±10ms",
+                color = colors.primary
+            )
+            DirectionStat(
+                count = lateCount,
+                total = total,
+                label = "Late",
+                sublabel = "hit after the beat",
+                color = colors.secondary
+            )
+        }
+
+        // Visual proportion bar
+        if (total > 0) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+            ) {
+                if (earlyCount > 0) Box(
+                    modifier = Modifier
+                        .weight(earlyCount.toFloat())
+                        .fillMaxHeight()
+                        .background(blue)
+                )
+                if (onTimeCount > 0) Box(
+                    modifier = Modifier
+                        .weight(onTimeCount.toFloat())
+                        .fillMaxHeight()
+                        .background(colors.primary)
+                )
+                if (lateCount > 0) Box(
+                    modifier = Modifier
+                        .weight(lateCount.toFloat())
+                        .fillMaxHeight()
+                        .background(colors.secondary)
+                )
+                // Fill remainder if all counts are zero edge case
+                if (earlyCount == 0 && onTimeCount == 0 && lateCount == 0) Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(colors.surfaceVariant)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Early", color = blue.copy(alpha = 0.7f), fontSize = 10.sp)
+                Text("Late", color = colors.secondary.copy(alpha = 0.7f), fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectionStat(
+    count: Int,
+    total: Int,
+    label: String,
+    sublabel: String,
+    color: Color
+) {
+    val colors = MaterialTheme.colorScheme
+    val percentage = if (total > 0) (count * 100 / total) else 0
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "$count",
+            color = color,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            "$percentage%",
+            color = color.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(label, color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(sublabel, color = colors.onSurfaceVariant, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun ConsistencyBadge(
+    label: String,
+    value: String,
+    sublabel: String,
+    color: Color
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(color.copy(alpha = 0.08f))
+            .padding(horizontal = 20.dp, vertical = 14.dp)
+    ) {
+        Text(label, color = colors.onSurfaceVariant, fontSize = 11.sp)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            value,
+            color = color,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            sublabel,
+            color = colors.onSurfaceVariant,
+            fontSize = 10.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun BestSegmentRow(derivedStats: DerivedStats) {
+    val colors = MaterialTheme.colorScheme
+    val segmentLabels = listOf("First third", "Middle third", "Final third")
+    val bestLabel = segmentLabels[derivedStats.bestSegmentIndex]
+    val bestAccuracy = derivedStats.segmentAccuracies[derivedStats.bestSegmentIndex].toInt()
+
+    Column {
+        Text("Session Segments", color = colors.onSurfaceVariant, fontSize = 12.sp)
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            derivedStats.segmentAccuracies.forEachIndexed { index, accuracy ->
+                val isBest = index == derivedStats.bestSegmentIndex
+                val segColor = if (isBest) colors.primary else colors.onSurfaceVariant
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (isBest) colors.primary.copy(alpha = 0.10f)
+                            else colors.surfaceVariant
+                        )
+                        .padding(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "${accuracy.toInt()}%",
+                        color = segColor,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        segmentLabels[index],
+                        color = segColor.copy(alpha = 0.8f),
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    if (isBest) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "Best",
+                            color = colors.primary,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Your strongest section was the $bestLabel at $bestAccuracy% accuracy.",
+            color = colors.onSurfaceVariant,
+            fontSize = 12.sp,
+            lineHeight = 16.sp
+        )
+    }
+}
+
+// ── Existing sub-components (unchanged) ──────────────────────────────────────
 
 @Composable
 private fun SectionCard(
@@ -457,7 +820,7 @@ private fun HitRow(hit: Hit, modifier: Modifier = Modifier) {
     }
 }
 
-// ── Analysis logic ─────────────────────────────────────────────────────────────
+// ── Analysis logic ────────────────────────────────────────────────────────────
 
 private data class TendencyAnalysis(
     val title: String,

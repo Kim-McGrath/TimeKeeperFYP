@@ -58,12 +58,11 @@ fun LeaderboardScreen(
                     val name = doc.getString("displayName") ?: return@mapNotNull null
                     val acc = doc.getDouble("averageAccuracy") ?: 0.0
                     val sessions = doc.getLong("totalSessions")?.toInt() ?: 0
-                    // Only show users with at least 1 session
                     if (sessions == 0) return@mapNotNull null
                     LeaderboardEntry(doc.id, name, acc, sessions)
                 }
             } catch (e: Exception) {
-                error = "Couldn't load leaderboard - check your connection"
+                error = "Couldn't load leaderboard — check your connection"
             }
             isLoading = false
         }
@@ -135,43 +134,78 @@ fun LeaderboardScreen(
                 }
             }
             else -> {
-                // Find current user's position
                 val userRank = entries.indexOfFirst { it.uid == currentUid }
+                val showPodium = entries.size >= 3
 
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Top 3 podium
-                    if (entries.size >= 3) {
+                    // Podium only when 3+ users
+                    if (showPodium) {
                         item {
                             PodiumRow(
                                 first = entries[0],
                                 second = entries[1],
-                                third = entries.getOrNull(2)
+                                third = entries[2]
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
 
-                    // Rest of list starting from position 4
-                    itemsIndexed(if (entries.size > 3) entries.drop(3) else entries) { index, entry ->
-                        val rank = if (entries.size > 3) index + 4 else index + 1
+                    // Full list — always show from position 1 when no podium,
+                    // from position 4 when podium is shown
+                    val listEntries = if (showPodium) entries.drop(3) else entries
+                    val startRank = if (showPodium) 4 else 1
+
+                    itemsIndexed(listEntries) { index, entry ->
                         LeaderboardRow(
-                            rank = rank,
+                            rank = startRank + index,
                             entry = entry,
                             isCurrentUser = entry.uid == currentUid
                         )
                     }
 
-                    // Show user's position if not in top 20
+                    // Invite prompt when only one user is on the board
+                    if (entries.size == 1) {
+                        item {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Surface(
+                                color = colors.surfaceVariant,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        "You're the only one here!",
+                                        color = colors.onBackground,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        "Share the app with friends or fellow musicians to compete on the leaderboard.",
+                                        color = colors.onSurfaceVariant,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Current user not in top 20
                     if (userRank == -1 && currentUid != null) {
                         item {
                             Spacer(modifier = Modifier.height(8.dp))
                             HorizontalDivider(color = colors.outline.copy(alpha = 0.3f))
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "You are not yet ranked — complete more sessions",
+                                "You are not yet ranked — complete more sessions to appear here.",
                                 color = colors.onSurfaceVariant,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -190,7 +224,7 @@ fun LeaderboardScreen(
 private fun PodiumRow(
     first: LeaderboardEntry,
     second: LeaderboardEntry,
-    third: LeaderboardEntry?
+    third: LeaderboardEntry
 ) {
     val colors = MaterialTheme.colorScheme
 
@@ -204,48 +238,30 @@ private fun PodiumRow(
             modifier = Modifier.padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                "Top Players",
-                color = colors.onBackground,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            Text("Top Players", color = colors.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.Bottom
             ) {
-                // 2nd place
                 PodiumSlot(entry = second, rank = 2, height = 70)
-                // 1st place — taller
                 PodiumSlot(entry = first, rank = 1, height = 90)
-                // 3rd place
-                if (third != null) {
-                    PodiumSlot(entry = third, rank = 3, height = 55)
-                }
+                PodiumSlot(entry = third, rank = 3, height = 55)
             }
         }
     }
 }
 
 @Composable
-private fun PodiumSlot(
-    entry: LeaderboardEntry,
-    rank: Int,
-    height: Int
-) {
+private fun PodiumSlot(entry: LeaderboardEntry, rank: Int, height: Int) {
     val colors = MaterialTheme.colorScheme
     val podiumColor = when (rank) {
         1 -> Color(0xFFFFD700).copy(alpha = 0.15f)
         2 -> Color(0xFFC0C0C0).copy(alpha = 0.15f)
         else -> Color(0xFFCD7F32).copy(alpha = 0.15f)
     }
-    val rankLabel = when (rank) {
-        1 -> "1st"
-        2 -> "2nd"
-        else -> "3rd"
-    }
+    val rankLabel = when (rank) { 1 -> "1st"; 2 -> "2nd"; else -> "3rd" }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -253,19 +269,8 @@ private fun PodiumSlot(
     ) {
         Text(rankLabel, color = colors.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = entry.displayName,
-            color = colors.onBackground,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1
-        )
-        Text(
-            text = "${entry.averageAccuracy.toInt()}%",
-            color = colors.primary,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Text(entry.displayName, color = colors.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text("${entry.averageAccuracy.toInt()}%", color = colors.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         Box(
             modifier = Modifier
@@ -278,11 +283,7 @@ private fun PodiumSlot(
 }
 
 @Composable
-private fun LeaderboardRow(
-    rank: Int,
-    entry: LeaderboardEntry,
-    isCurrentUser: Boolean
-) {
+private fun LeaderboardRow(rank: Int, entry: LeaderboardEntry, isCurrentUser: Boolean) {
     val colors = MaterialTheme.colorScheme
     val bgColor = if (isCurrentUser) colors.primary.copy(alpha = 0.08f) else colors.surface
 
@@ -294,7 +295,6 @@ private fun LeaderboardRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Rank
         Text(
             text = "#$rank",
             color = colors.onSurfaceVariant,
@@ -302,16 +302,11 @@ private fun LeaderboardRow(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.width(36.dp)
         )
-
-        // Avatar
         Box(
             modifier = Modifier
                 .size(38.dp)
                 .clip(CircleShape)
-                .background(
-                    if (isCurrentUser) colors.primary
-                    else colors.surfaceVariant
-                ),
+                .background(if (isCurrentUser) colors.primary else colors.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -321,9 +316,7 @@ private fun LeaderboardRow(
                 fontWeight = FontWeight.Bold
             )
         }
-
         Spacer(modifier = Modifier.width(12.dp))
-
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -334,10 +327,7 @@ private fun LeaderboardRow(
                 )
                 if (isCurrentUser) {
                     Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = colors.primary.copy(alpha = 0.15f)
-                    ) {
+                    Surface(shape = RoundedCornerShape(6.dp), color = colors.primary.copy(alpha = 0.15f)) {
                         Text(
                             text = "You",
                             color = colors.primary,
@@ -348,18 +338,8 @@ private fun LeaderboardRow(
                     }
                 }
             }
-            Text(
-                text = "${entry.totalSessions} sessions",
-                color = colors.onSurfaceVariant,
-                fontSize = 12.sp
-            )
+            Text("${entry.totalSessions} sessions", color = colors.onSurfaceVariant, fontSize = 12.sp)
         }
-
-        Text(
-            text = "${entry.averageAccuracy.toInt()}%",
-            color = colors.primary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Text("${entry.averageAccuracy.toInt()}%", color = colors.primary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 }

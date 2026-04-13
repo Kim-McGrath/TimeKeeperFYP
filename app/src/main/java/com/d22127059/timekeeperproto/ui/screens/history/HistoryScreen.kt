@@ -83,7 +83,7 @@ fun HistoryScreen(
                             Column(modifier = Modifier.padding(20.dp)) {
                                 Text("Accuracy Trend", color = colors.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                 Spacer(modifier = Modifier.height(16.dp))
-                                AccuracyGraph(sessions = sessions.takeLast(10), modifier = Modifier.fillMaxWidth().height(100.dp))
+                                AccuracyGraph(sessions = sessions.filter { it.actualDurationMs >= 15000 }.takeLast(10), modifier = Modifier.fillMaxWidth().height(100.dp))
                             }
                         }
                     }

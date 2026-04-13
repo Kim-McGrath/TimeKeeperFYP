@@ -13,10 +13,10 @@ import be.tarsos.dsp.onsets.PercussionOnsetDetector
 import kotlinx.coroutines.*
 
 enum class SurfaceType(val sensitivity: Double, val threshold: Double) {
-    DRUM_KIT(8.0, 0.3),
-    PRACTICE_PAD(12.0, 0.25),
-    TABLE(15.0, 0.2),
-    CUSTOM(8.0, 0.3);
+    DRUM_KIT(8.0, 0.03),       // Physical drum kit ~10cm from mic
+    PRACTICE_PAD(10.0, 0.08),  // Practice pad, moderate signal
+    TABLE(14.0, 0.06),         // Table/quiet surface, weaker transients
+    CUSTOM(8.0, 0.05);
 
     companion object {
         fun fromString(name: String): SurfaceType {
@@ -37,13 +37,26 @@ class OnsetDetector(
 ) {
     companion object {
         private const val TAG = "OnsetDetector"
+
+        // Empirically measured microphone input latency on physical device.
+        // Compensates for the delay between a hit occurring and the audio
+        // buffer being processed by TarsosDSP.
         private const val INPUT_LATENCY_COMPENSATION_MS = 230L
+
+        // Minimum gap between two accepted onsets.
+        // 100ms blocks snare wire resonance (which typically decays within 80ms
+        // of the stroke) while leaving the beat window open at all supported BPMs.
+        // At 160 BPM the beat interval is 375ms, so 100ms still leaves 275ms open.
+        private const val ONSET_DEBOUNCE_MS = 100L
     }
 
     private var audioRecord: AudioRecord? = null
     private var processingJob: Job? = null
     private var isRecording = false
     private var recordingStartTime: Long = 0L
+
+    @Volatile
+    private var lastAcceptedOnsetMs: Long = 0L
 
     private var currentSurfaceType: SurfaceType = initialSurfaceType
     private var sensitivity: Double = initialSurfaceType.sensitivity
@@ -55,7 +68,7 @@ class OnsetDetector(
         currentSurfaceType = surfaceType
         sensitivity = surfaceType.sensitivity
         threshold = surfaceType.threshold
-        Log.d(TAG, "Surface type changed to $surfaceType (sensitivity=$sensitivity, threshold=$threshold)")
+        Log.d(TAG, "Surface type: $surfaceType (sensitivity=$sensitivity, threshold=$threshold)")
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
@@ -75,7 +88,7 @@ class OnsetDetector(
             val actualBufferSize = maxOf(bufferSize * 2, minBufferSize)
 
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION, // Enables hardware AEC
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 sampleRate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
@@ -87,7 +100,9 @@ class OnsetDetector(
                 return false
             }
 
-            Log.d(TAG, "OnsetDetector initialised: sampleRate=$sampleRate, bufferSize=$actualBufferSize")
+            lastAcceptedOnsetMs = 0L
+
+            Log.d(TAG, "OnsetDetector initialised: sensitivity=$sensitivity, threshold=$threshold")
             return true
 
         } catch (e: Exception) {
@@ -104,17 +119,14 @@ class OnsetDetector(
 
         audioRecord?.let { record ->
             try {
-                val actualRecordingStart = System.currentTimeMillis()
-                recordingStartTime = actualRecordingStart
-
+                recordingStartTime = System.currentTimeMillis()
+                lastAcceptedOnsetMs = 0L
                 record.startRecording()
                 isRecording = true
-
                 processingJob = coroutineScope.launch(Dispatchers.IO) {
                     processAudio(record)
                 }
-
-                Log.d(TAG, "Started onset detection at $actualRecordingStart")
+                Log.d(TAG, "Started onset detection at $recordingStartTime")
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting recording", e)
                 isRecording = false
@@ -146,12 +158,13 @@ class OnsetDetector(
         val floatBuffer = FloatArray(bufferSize)
 
         val audioFormat = TarsosDSPAudioFormat(
-            sampleRate.toFloat(),
-            16,
-            1,
-            true,
-            false
+            sampleRate.toFloat(), 16, 1, true, false
         )
+
+        // Snapshot values at detection start so surface type changes
+        // mid-session do not affect an active recording
+        val activeSensitivity = sensitivity
+        val activeThreshold = threshold
 
         val onsetDetector = PercussionOnsetDetector(
             sampleRate.toFloat(),
@@ -159,37 +172,37 @@ class OnsetDetector(
             OnsetHandler { timeInSeconds, _ ->
                 if (isRecording) {
                     val onsetTimeMs = (timeInSeconds * 1000.0).toLong()
-                    val actualTimestamp = recordingStartTime + onsetTimeMs + INPUT_LATENCY_COMPENSATION_MS
-                    onOnsetDetected?.invoke(actualTimestamp)
+                    val rawTimestamp = recordingStartTime + onsetTimeMs + INPUT_LATENCY_COMPENSATION_MS
+
+                    // Debounce: discard onsets arriving within 100ms of the last
+                    // accepted hit to suppress snare wire resonance and sympathetic
+                    // vibration from other drum components
+                    val now = System.currentTimeMillis()
+                    if (now - lastAcceptedOnsetMs >= ONSET_DEBOUNCE_MS) {
+                        lastAcceptedOnsetMs = now
+                        onOnsetDetected?.invoke(rawTimestamp)
+                    } else {
+                        Log.d(TAG, "Onset debounced: ${now - lastAcceptedOnsetMs}ms after last hit")
+                    }
                 }
             },
-            sensitivity,
-            threshold
+            activeSensitivity,
+            activeThreshold
         )
 
         while (isRecording) {
             val readResult = record.read(audioBuffer, 0, bufferSize)
 
             if (readResult > 0) {
-                for (i in 0 until readResult) {
-                    floatBuffer[i] = audioBuffer[i] / 32768.0f
-                }
-
-                for (i in readResult until bufferSize) {
-                    floatBuffer[i] = 0.0f
-                }
-
+                for (i in 0 until readResult) floatBuffer[i] = audioBuffer[i] / 32768.0f
+                for (i in readResult until bufferSize) floatBuffer[i] = 0.0f
                 val audioEvent = AudioEvent(audioFormat).apply {
                     this.floatBuffer = floatBuffer.copyOf()
                 }
-
                 onsetDetector.process(audioEvent)
-
-            } else if (readResult == AudioRecord.ERROR_INVALID_OPERATION) {
-                Log.e(TAG, "Invalid operation whilst reading audio")
-                break
-            } else if (readResult == AudioRecord.ERROR_BAD_VALUE) {
-                Log.e(TAG, "Bad value whilst reading audio")
+            } else if (readResult == AudioRecord.ERROR_INVALID_OPERATION ||
+                readResult == AudioRecord.ERROR_BAD_VALUE) {
+                Log.e(TAG, "AudioRecord read error: $readResult")
                 break
             }
 

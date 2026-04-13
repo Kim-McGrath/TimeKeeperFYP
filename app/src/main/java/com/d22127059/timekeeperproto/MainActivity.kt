@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
             sessionDao = database.sessionDao(),
             hitDao = database.hitDao()
         )
+
         val onsetDetector = OnsetDetector(initialSurfaceType = selectedSurfaceType.value)
         val metronomeEngine = MetronomeEngine(context = applicationContext)
 
@@ -89,7 +90,6 @@ class MainActivity : ComponentActivity() {
         themeViewModel = ThemeViewModel()
         authViewModel = AuthViewModel()
 
-        // Check if onboarding has been shown before
         val prefs = getSharedPreferences("timekeeper_prefs", Context.MODE_PRIVATE)
         val hasSeenOnboarding = prefs.getBoolean("has_seen_onboarding", false)
 
@@ -155,7 +155,6 @@ fun TimeKeeperApp(
         scope.launch { userStats = repository.getUserStatistics() }
     }
 
-    // Sync completed sessions to Firestore when logged in
     LaunchedEffect(practiceUiState) {
         if (practiceUiState is PracticeUiState.Completed && currentUser != null) {
             val stats = (practiceUiState as PracticeUiState.Completed).stats
@@ -175,7 +174,6 @@ fun TimeKeeperApp(
         }
     }
 
-    // Navigate after successful auth
     LaunchedEffect(authState) {
         if (authState is AuthState.Success) {
             while (backStack.lastOrNull() == Screen.Login || backStack.lastOrNull() == Screen.Register) {
@@ -204,10 +202,7 @@ fun TimeKeeperApp(
     Scaffold(
         bottomBar = {
             if (!isFullScreen) {
-                NavigationBar(
-                    containerColor = colors.surface,
-                    tonalElevation = 0.dp
-                ) {
+                NavigationBar(containerColor = colors.surface, tonalElevation = 0.dp) {
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.Home, contentDescription = "Home", modifier = Modifier.size(22.dp)) },
                         label = { Text("Home", fontSize = 11.sp) },
@@ -222,7 +217,6 @@ fun TimeKeeperApp(
                         onClick = { navigateTo(Screen.History) },
                         colors = navItemColors()
                     )
-                    // Centre practice pill button
                     NavigationBarItem(
                         icon = {
                             Box(
@@ -282,7 +276,6 @@ fun TimeKeeperApp(
                 Screen.Onboarding -> OnboardingScreen(
                     onComplete = {
                         onOnboardingComplete()
-                        // Replace onboarding with home in the stack
                         backStack.clear()
                         backStack.add(Screen.Home)
                     }
@@ -371,9 +364,7 @@ private fun navItemColors() = NavigationBarItemDefaults.colors(
 fun PermissionRequestScreen(onRequestPermission: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.background),
+        modifier = Modifier.fillMaxSize().background(colors.background),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -397,9 +388,7 @@ fun PermissionRequestScreen(onRequestPermission: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = onRequestPermission,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
+                modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
                 Text("Allow microphone access", fontWeight = FontWeight.Bold)
             }

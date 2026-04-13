@@ -49,23 +49,30 @@ fun PracticeScreen(
 
     val view = LocalView.current
     DisposableEffect(keepScreenOn) {
-        if (keepScreenOn) {
-            view.keepScreenOn = true
-        }
-        onDispose {
-            view.keepScreenOn = false
-        }
+        if (keepScreenOn) view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
     }
-    val debugEvents by viewModel.debugEvents.collectAsState()
-    var showDebug by remember { mutableStateOf(false) }
+
+    // Intercept back press during an active session — pause instead of navigate away.
+    // The user can then end the session deliberately via the End Session button.
+    // During countdown, back press is suppressed entirely to avoid an orphaned metronome.
+    val isSessionActive = uiState is PracticeUiState.Active
+    val isCountdown = uiState is PracticeUiState.Countdown
+    androidx.activity.compose.BackHandler(enabled = isSessionActive) {
+        viewModel.pauseSession()
+    }
+    androidx.activity.compose.BackHandler(enabled = isCountdown) {
+        // Swallow back press during countdown — navigating away here would leave
+        // the metronome running with no way to stop it
+    }
+
+    val colors = MaterialTheme.colorScheme
+    val context = LocalContext.current
+
     var selectedBpm by remember { mutableIntStateOf(100) }
     var selectedDurationMinutes by remember { mutableIntStateOf(5) }
     var tapModeEnabled by remember { mutableStateOf(false) }
 
-
-    val colors = MaterialTheme.colorScheme
-
-    val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -115,6 +122,8 @@ fun PracticeScreen(
                 CountdownContent(countdownValue = state.countdownValue)
             }
             is PracticeUiState.Active -> {
+                val debugEvents by viewModel.debugEvents.collectAsState()
+                var showDebug by remember { mutableStateOf(false) }
                 if (showDebug) {
                     DebugTimingVisualization(
                         events = debugEvents,
@@ -149,7 +158,13 @@ fun PracticeScreen(
                 }
             }
             is PracticeUiState.Completed -> {
-                CompletedContent(stats = state.stats, onDoneClick = onNavigateBack)
+                CompletedContent(
+                    stats = state.stats,
+                    onDoneClick = {
+                        viewModel.resetSession()
+                        onNavigateBack()
+                    }
+                )
             }
             is PracticeUiState.Error -> {
                 ErrorContent(message = state.message, onRetryClick = { requestAudioAndInit() })
@@ -193,7 +208,6 @@ private fun ReadyContent(
 ) {
     val colors = MaterialTheme.colorScheme
     var expanded by remember { mutableStateOf(false) }
-    // Tap tempo state
     val tapTimes = remember { mutableStateListOf<Long>() }
 
     Column(
@@ -296,7 +310,6 @@ private fun ReadyContent(
                     Button(
                         onClick = {
                             val now = System.currentTimeMillis()
-                            // Reset if last tap was more than 3 seconds ago
                             if (tapTimes.isNotEmpty() && now - tapTimes.last() > 3000) {
                                 tapTimes.clear()
                             }
@@ -365,7 +378,14 @@ private fun ReadyContent(
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("Practice Surface", color = colors.onSurfaceVariant, fontSize = 13.sp)
+                // Header row: label + calibration badge if active
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Practice Surface", color = colors.onSurfaceVariant, fontSize = 13.sp)
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 ExposedDropdownMenuBox(
                     expanded = expanded,
@@ -408,7 +428,7 @@ private fun ReadyContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Tap mode toggle — presented as a demo/accessibility option
+        // Tap mode toggle
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -586,11 +606,7 @@ private fun ActiveSessionContent(
         if (isPaused) {
             PausedOverlay()
         } else if (tapModeEnabled) {
-            // Tap mode UI — large tappable area with indicator
-            TapModeContent(
-                category = category,
-                onTapHit = onTapHit
-            )
+            TapModeContent(category = category, onTapHit = onTapHit)
         } else {
             if (category == null) WaitingForHitIndicator()
             else TrafficLightIndicator(category = category, size = 380f)
@@ -628,13 +644,8 @@ private fun ActiveSessionContent(
 }
 
 @Composable
-private fun TapModeContent(
-    category: AccuracyCategory?,
-    onTapHit: () -> Unit
-) {
+private fun TapModeContent(category: AccuracyCategory?, onTapHit: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-
-    // Flash animation on tap
     val flashAnim = remember { Animatable(0f) }
     LaunchedEffect(category) {
         if (category != null) {
@@ -642,45 +653,36 @@ private fun TapModeContent(
             flashAnim.animateTo(0f, tween(300))
         }
     }
-
     val tapColor = when (category) {
         AccuracyCategory.GREEN -> Color(0xFF10B981)
         AccuracyCategory.YELLOW -> Color(0xFFF59E0B)
         AccuracyCategory.RED -> Color(0xFFEF4444)
         null -> colors.primary
     }
-
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // The small indicator above the tap button
-        if (category != null) {
-            TrafficLightIndicator(category = category, size = 120f)
-        } else {
-            Spacer(modifier = Modifier.height(120.dp))
-        }
-
-        // Large tap button
+        if (category != null) TrafficLightIndicator(category = category, size = 120f)
+        else Spacer(modifier = Modifier.height(120.dp))
         Box(
             modifier = Modifier
                 .size(220.dp)
                 .background(
-                    color = tapColor.copy(alpha = 0.1f + flashAnim.value * 0.3f),
+                    // At rest (no flash): use surfaceVariant for a clear neutral background.
+                    // On flash after a hit: shift to the result colour briefly.
+                    color = if (flashAnim.value > 0f)
+                        tapColor.copy(alpha = 0.15f + flashAnim.value * 0.3f)
+                    else
+                        colors.surfaceVariant,
                     shape = RoundedCornerShape(32.dp)
                 )
-                .pointerInput(Unit) {
-                    detectTapGestures { onTapHit() }
-                },
+                .pointerInput(Unit) { detectTapGestures { onTapHit() } },
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("TAP", color = tapColor, fontSize = 48.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    "to the beat",
-                    color = colors.onSurfaceVariant,
-                    fontSize = 16.sp
-                )
+                Text("to the beat", color = colors.onSurfaceVariant, fontSize = 16.sp)
             }
         }
     }
@@ -699,12 +701,7 @@ private fun PausedOverlay() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            "Paused",
-            color = colors.onBackground.copy(alpha = alpha),
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Text("Paused", color = colors.onBackground.copy(alpha = alpha), fontSize = 32.sp, fontWeight = FontWeight.Bold)
         Text("Tap Resume to continue", color = colors.onSurfaceVariant, fontSize = 16.sp)
     }
 }
@@ -743,27 +740,105 @@ private fun WaitingForHitIndicator() {
 }
 
 @Composable
-private fun CompletedContent(stats: com.d22127059.timekeeperproto.domain.SessionStats, onDoneClick: () -> Unit) {
+private fun CompletedContent(
+    stats: com.d22127059.timekeeperproto.domain.SessionStats,
+    onDoneClick: () -> Unit
+) {
     val colors = MaterialTheme.colorScheme
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text("Session Complete!", color = colors.onBackground, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(32.dp))
-        Text("${stats.accuracyPercentage.toInt()}%", color = colors.primary, fontSize = 64.sp, fontWeight = FontWeight.Bold)
-        Text("Overall Accuracy", color = colors.onBackground, fontSize = 18.sp)
-        Spacer(modifier = Modifier.height(32.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+
+    val motivationalMessage = when {
+        stats.accuracyPercentage >= 90 -> "Outstanding work — that was a great session."
+        stats.accuracyPercentage >= 75 -> "Good session. Your timing is coming together."
+        stats.accuracyPercentage >= 60 -> "Getting there. Each session builds consistency."
+        stats.totalHits < 3 -> "Short session recorded. Try a longer run to see your full results."
+        else -> "Keep going. Regular practice makes the biggest difference."
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            "Session Complete",
+            color = colors.onBackground,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Accuracy display
+        Text(
+            "${stats.accuracyPercentage.toInt()}%",
+            color = colors.primary,
+            fontSize = 80.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 80.sp
+        )
+        Text("Overall Accuracy", color = colors.onSurfaceVariant, fontSize = 15.sp)
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // Hit breakdown
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
             StatCard("Perfect", stats.greenHits, colors.primary)
             StatCard("Good", stats.yellowHits, colors.secondary)
             StatCard("Off", stats.redHits, colors.error)
         }
-        Spacer(modifier = Modifier.height(24.dp))
-        if (stats.tendencyToRush) Text("Tendency to rush (play early)", color = colors.secondary, fontSize = 14.sp)
-        else if (stats.tendencyToDrag) Text("Tendency to drag (play late)", color = colors.secondary, fontSize = 14.sp)
-        Text("Avg timing: ${stats.averageTimingError.toInt()}ms", color = colors.onBackground, fontSize = 14.sp)
-        Spacer(modifier = Modifier.height(32.dp))
-        Button(onClick = onDoneClick, modifier = Modifier.width(200.dp).height(50.dp)) {
-            Text("Done", fontSize = 18.sp)
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Timing tendency
+        if (stats.tendencyToRush || stats.tendencyToDrag) {
+            Surface(
+                color = colors.secondary.copy(alpha = 0.10f),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = if (stats.tendencyToRush) "Tendency to rush (playing slightly early)"
+                    else "Tendency to drag (playing slightly late)",
+                    color = colors.secondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
         }
+
+        // Motivational message
+        Text(
+            text = motivationalMessage,
+            color = colors.onSurfaceVariant,
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Primary action
+        Button(
+            onClick = onDoneClick,
+            modifier = Modifier.fillMaxWidth().height(54.dp),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        ) {
+            Text("Done", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Inform user that full analysis exists in session history
+        Text(
+            "Full timing analysis is available in History.",
+            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+            fontSize = 12.sp
+        )
     }
 }
 
