@@ -4,9 +4,9 @@ import androidx.room.*
 import com.d22127059.timekeeperproto.data.local.entities.Session
 import kotlinx.coroutines.flow.Flow
 
-// Data Access Object for session entity
-// Provides methods for CRUD operations on sessions
-// Much of this is not yet implemented, will be for session reports later on
+// Data Access Object for the Session entity
+// Sessions are the top-level record for each practice run
+// Hit records reference sessions via a foreign key relationship
 @Dao
 interface SessionDao {
 
@@ -31,10 +31,6 @@ interface SessionDao {
     @Query("SELECT * FROM sessions ORDER BY timestamp DESC")
     fun getAllSessions(): Flow<List<Session>>
 
-    // Gets sessions within a date range
-    @Query("SELECT * FROM sessions WHERE timestamp BETWEEN :startTime AND :endTime ORDER BY timestamp DESC")
-    fun getSessionsInRange(startTime: Long, endTime: Long): Flow<List<Session>>
-
     // Gets the most recent N sessions
     @Query("SELECT * FROM sessions ORDER BY timestamp DESC LIMIT :limit")
     fun getRecentSessions(limit: Int): Flow<List<Session>>
@@ -46,10 +42,6 @@ interface SessionDao {
     // Gets total number of sessions
     @Query("SELECT COUNT(*) FROM sessions")
     suspend fun getTotalSessionCount(): Int
-
-    // Gets sessions with accuracy above a threshold
-    @Query("SELECT * FROM sessions WHERE accuracyPercentage >= :minAccuracy ORDER BY timestamp DESC")
-    fun getSessionsAboveAccuracy(minAccuracy: Double): Flow<List<Session>>
 
     // Deletes all sessions (for testing or data reset)
     @Query("DELETE FROM sessions")

@@ -26,7 +26,7 @@ data class Hit(
     val sessionId: Long,              // Foreign key to parent session
     val hitTimestamp: Long,           // When hit was detected
     val expectedBeatTimestamp: Long,  // When beat was expected
-    val timingErrorMs: Double,        // Timing error
+    val timingErrorMs: Double,        // Signed: negative = early, positive = late
     val accuracyCategory: String      // "GREEN", "YELLOW", or "RED"
 ) {
 

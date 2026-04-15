@@ -12,22 +12,16 @@ import be.tarsos.dsp.onsets.OnsetHandler
 import be.tarsos.dsp.onsets.PercussionOnsetDetector
 import kotlinx.coroutines.*
 
+// sensitivity: how strongly the detector reacts to spectral flux changes
+// threshold: minimum flux value required to register an onset
+// Values were determined through empirical testing on a physical device (Google Pixel 7a)
+// CUSTOM is reserved and not exposed in the UI - it exists as a filter target in PracticeScreen.
 enum class SurfaceType(val sensitivity: Double, val threshold: Double) {
-    DRUM_KIT(8.0, 0.03),       // Physical drum kit ~10cm from mic
-    PRACTICE_PAD(10.0, 0.08),  // Practice pad, moderate signal
-    TABLE(14.0, 0.06),         // Table/quiet surface, weaker transients
-    CUSTOM(8.0, 0.05);
+    DRUM_KIT(8.0, 0.03),       // Loud sharp transient - drum kit ~10cm from mic
+    PRACTICE_PAD(10.0, 0.08),  // Quieter damped signal - dedicated practice pad
+    TABLE(14.0, 0.06),         // Subtle transient - hard surface or table
+    CUSTOM(8.0, 0.05); // Reserved, not exposed in the UI
 
-    companion object {
-        fun fromString(name: String): SurfaceType {
-            return when (name.uppercase()) {
-                "DRUM_KIT" -> DRUM_KIT
-                "PRACTICE_PAD" -> PRACTICE_PAD
-                "TABLE" -> TABLE
-                else -> CUSTOM
-            }
-        }
-    }
 }
 
 class OnsetDetector(
@@ -38,15 +32,13 @@ class OnsetDetector(
     companion object {
         private const val TAG = "OnsetDetector"
 
-        // Empirically measured microphone input latency on physical device.
-        // Compensates for the delay between a hit occurring and the audio
-        // buffer being processed by TarsosDSP.
+        // Empirically measured microphone input latency on physical device
+        // Compensates for the delay between a hit occurring and the audio buffer being processed by TarsosDSP
         private const val INPUT_LATENCY_COMPENSATION_MS = 230L
 
-        // Minimum gap between two accepted onsets.
-        // 100ms blocks snare wire resonance (which typically decays within 80ms
-        // of the stroke) while leaving the beat window open at all supported BPMs.
-        // At 160 BPM the beat interval is 375ms, so 100ms still leaves 275ms open.
+        // Minimum gap between two accepted onsets
+        // 100ms blocks snare wire resonance (which typically decays within 80ms of the stroke) while leaving the beat window open at all supported BPMs
+        // At 160 BPM the beat interval is 375ms, so 100ms still leaves 275ms open
         private const val ONSET_DEBOUNCE_MS = 100L
     }
 
@@ -86,7 +78,8 @@ class OnsetDetector(
             }
 
             val actualBufferSize = maxOf(bufferSize * 2, minBufferSize)
-
+            // VOICE_COMMUNICATION enables hardware acoustic echo cancellation on supported devices,
+            // which reduces the risk of the metronome click being picked up by the microphone and registered as a hit
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 sampleRate,
@@ -110,6 +103,10 @@ class OnsetDetector(
             return false
         }
     }
+
+    // Begins audio capture and onset detection on a background coroutine
+    // sessionStartTime is accepted for call-site consistency but detection timestamps
+    // anchored to recordingStartTime, set at the moment AudioRecord.startRecording() is called
 
     fun startDetection(sessionStartTime: Long, coroutineScope: CoroutineScope) {
         if (isRecording) {
@@ -161,8 +158,8 @@ class OnsetDetector(
             sampleRate.toFloat(), 16, 1, true, false
         )
 
-        // Snapshot values at detection start so surface type changes
-        // mid-session do not affect an active recording
+        // Snapshot the current surface type parameters before starting the processing loop
+        // Ensures a surface type change made on the setup screen cannot affect a session that is already in progress
         val activeSensitivity = sensitivity
         val activeThreshold = threshold
 
@@ -174,9 +171,8 @@ class OnsetDetector(
                     val onsetTimeMs = (timeInSeconds * 1000.0).toLong()
                     val rawTimestamp = recordingStartTime + onsetTimeMs + INPUT_LATENCY_COMPENSATION_MS
 
-                    // Debounce: discard onsets arriving within 100ms of the last
-                    // accepted hit to suppress snare wire resonance and sympathetic
-                    // vibration from other drum components
+                    // Debounce: discard onsets arriving within 100ms of the last accepted hit to suppress
+                    // snare wire resonance and sympathetic vibration from other drum components
                     val now = System.currentTimeMillis()
                     if (now - lastAcceptedOnsetMs >= ONSET_DEBOUNCE_MS) {
                         lastAcceptedOnsetMs = now

@@ -29,8 +29,7 @@ abstract class TimeKeeperDatabase : RoomDatabase() {
 
         private const val DATABASE_NAME = "timekeeper_database"
 
-        // Gets the singleton database instance
-        // Uses double checked locking for thread safety
+        // Double-checked locking ensures only one database instance is created even if multiple threads call getDatabase() simultaneously
         fun getDatabase(context: Context): TimeKeeperDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -38,18 +37,13 @@ abstract class TimeKeeperDatabase : RoomDatabase() {
                     TimeKeeperDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .fallbackToDestructiveMigration() // For prototype allow data loss on schema changes, FIX IN MAIN!
+                    // Schema is at version 1 and has not changed since initial release
+                    .fallbackToDestructiveMigration(false)
                     .build()
 
                 INSTANCE = instance
                 instance
             }
-        }
-
-        // Clears the database instance (for testing)
-        fun clearInstance() {
-            INSTANCE?.close()
-            INSTANCE = null
         }
     }
 }

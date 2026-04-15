@@ -5,9 +5,9 @@ import androidx.room.*
 import com.d22127059.timekeeperproto.data.local.entities.Hit
 import kotlinx.coroutines.flow.Flow
 
-// Data Access Object for hit entity
-// Provides methods for CRUD operations on individual hits
-// Much of this is not yet implemented, will be for session reports later on
+// Data Access Object for the Hit entity
+// Provides queries for inserting and retrieving individual hit records
+// Hit data is used by SessionDetailScreen to render the full timing analysis
 @Dao
 interface HitDao {
 

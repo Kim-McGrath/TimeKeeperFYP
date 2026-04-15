@@ -32,12 +32,19 @@ class PracticeViewModel(
 
     companion object {
         private const val TAG = "PracticeViewModel"
+        // Empirically measured compensation for Android touch input processing delay
+        // Touch events are stamped when the system processes them, not when the finger makes contact
+        // Calibrated on the test device (Google Pixel 7a)
         private const val TAP_LATENCY_COMPENSATION_MS = 200L
     }
 
     private val _uiState = MutableStateFlow<PracticeUiState>(PracticeUiState.Idle)
     val uiState: StateFlow<PracticeUiState> = _uiState.asStateFlow()
 
+    // Debug event tracking
+    // These fields were used during development to visualise the audio pipeline in real time via DebugTimingVisualization
+    // The debug UI is no longer exposed to users (the toggle button has been removed from PracticeScreen) but the
+    // event tracking is retained here as a record of the testing infrastructure
     private val _debugEvents = MutableStateFlow<List<DebugEvent>>(emptyList())
     val debugEvents: StateFlow<List<DebugEvent>> = _debugEvents.asStateFlow()
 
@@ -47,9 +54,8 @@ class PracticeViewModel(
     // same beat grid.
     private var sessionOriginTime: Long = 0L
 
-    // metronomeStartTime tracks when the metronome was most recently started.
-    // After a resume, this differs from sessionOriginTime because the beat grid
-    // must be reconstructed from where it left off.
+    // metronomeStartTime tracks when the metronome was most recently started
+    // After a resume, this differs from sessionOriginTime because the beat grid must be reconstructed from where it left off
     private var metronomeStartTime: Long = 0L
 
     private var pauseStartTime: Long = 0L
@@ -65,11 +71,11 @@ class PracticeViewModel(
     private var bpm: Int = 120
     private var durationMs: Long = 300000
 
-    // Tap mode — replaces microphone with screen tap
+    // Tap mode - replaces microphone with screen tap
     private var tapModeEnabled: Boolean = false
 
     private fun addDebugEvent(event: DebugEvent) {
-        _debugEvents.value = _debugEvents.value + event
+        _debugEvents.value += event
         if (_debugEvents.value.size > 100) {
             _debugEvents.value = _debugEvents.value.takeLast(100)
         }
@@ -123,8 +129,8 @@ class PracticeViewModel(
             ))
         }
 
-        // metronomeStartTime and sessionOriginTime are both set here at session start.
-        // They only diverge after a pause/resume cycle.
+        // metronomeStartTime and sessionOriginTime are both set here at session start
+        // They only diverge after a pause/resume cycle
         metronomeStartTime = metronomeEngine.start(bpm, viewModelScope)
         sessionOriginTime = metronomeStartTime
 
@@ -195,6 +201,8 @@ class PracticeViewModel(
         }
     }
 
+    // Handles a screen tap in tap mode. 200ms compensation constant is added to the touch event timestamp to
+    // account for Android touch input processing delay, calibrated empirically in the same way as the microphone input constant
     fun onTapHit() {
         val currentState = _uiState.value
         if (currentState is PracticeUiState.Active && !currentState.isPaused && tapModeEnabled) {
@@ -209,6 +217,8 @@ class PracticeViewModel(
         }
     }
 
+    // Polls every 100ms to update elapsed session time in the UI state
+    // Elapsed time calculated from sessionOriginTime minus accumulated pause duration, ensuring paused periods are excluded from the session length
     private fun startTimer() {
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
@@ -216,8 +226,7 @@ class PracticeViewModel(
                 delay(100)
                 val currentState = _uiState.value
                 if (currentState is PracticeUiState.Active && !currentState.isPaused) {
-                    // Elapsed time is measured from the fixed session origin,
-                    // minus however long has been spent paused.
+                    // Elapsed time is measured from the fixed session origin, minus however long has been spent paused
                     val elapsed = System.currentTimeMillis() - sessionOriginTime - totalPausedMs
                     _uiState.value = currentState.copy(elapsedTimeMs = elapsed)
                     if (durationMs != Long.MAX_VALUE && elapsed >= durationMs) {
@@ -228,6 +237,8 @@ class PracticeViewModel(
         }
     }
 
+    // Returns true if the given timestamp falls within 30ms of a known metronome beat
+    // Used to suppress false positive detections caused by the metronome click bleeding through the device speaker into the microphone
     private fun isMetronomeClick(timestamp: Long): Boolean {
         if (actualBeatTimes.isEmpty()) return false
         val filterWindowMs = 30L
@@ -241,8 +252,7 @@ class PracticeViewModel(
         val currentState = _uiState.value
         if (currentState is PracticeUiState.Active && currentState.isPaused) return
 
-        // All hits are analysed against the fixed sessionOriginTime so that
-        // pausing does not corrupt the beat grid reference.
+        // All hits are analysed against the fixed sessionOriginTime so that pausing does not corrupt the beat grid reference
         val result = analyzer.analyzeHit(timestamp, sessionOriginTime)
         hitResults.add(result)
 
@@ -281,8 +291,8 @@ class PracticeViewModel(
         metronomeEngine.initialize()
 
         // Restart the metronome. metronomeStartTime updates to the new start,
-        // but sessionOriginTime stays fixed so the beat grid reference is preserved.
-        // The TimingAnalyzer still uses sessionOriginTime for all hit calculations.
+        // but sessionOriginTime stays fixed so the beat grid reference is preserved
+        // The TimingAnalyzer still uses sessionOriginTime for all hit calculations
         metronomeStartTime = metronomeEngine.start(bpm, viewModelScope)
 
         if (!tapModeEnabled) {
@@ -294,10 +304,9 @@ class PracticeViewModel(
         _uiState.value = currentState.copy(isPaused = false)
     }
 
-    /**
-     * Resets the ViewModel back to Idle so the user can start a new session.
-     * Called when navigating away from the Completed screen.
-     */
+
+     // Resets the ViewModel back to Idle so the user can start a new session
+     // Called when navigating away from the Completed screen.
     fun resetSession() {
         hitResults.clear()
         actualBeatTimes.clear()

@@ -1,4 +1,4 @@
-package com.d22127059.timekeeperproto.ui.screens.leaderboard
+package com.d22127059.timekeeperproto.ui.screens.auth
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -7,13 +7,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -77,7 +76,7 @@ fun LeaderboardScreen(
             title = { Text("Leaderboard", fontWeight = FontWeight.Bold, color = colors.onBackground) },
             navigationIcon = {
                 IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = colors.onBackground)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.onBackground)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
@@ -153,8 +152,7 @@ fun LeaderboardScreen(
                         }
                     }
 
-                    // Full list — always show from position 1 when no podium,
-                    // from position 4 when podium is shown
+                    // Full list - always show from position 1 when no podium, from position 4 when podium is shown
                     val listEntries = if (showPodium) entries.drop(3) else entries
                     val startRank = if (showPodium) 4 else 1
 

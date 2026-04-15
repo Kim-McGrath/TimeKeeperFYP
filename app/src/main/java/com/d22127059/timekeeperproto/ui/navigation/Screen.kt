@@ -1,5 +1,8 @@
-package com.d22127059.timekeeperproto.navigation
+package com.d22127059.timekeeperproto.ui.navigation
 
+// Defines all navigation destinations in the app
+// Navigation is managed via a manual back stack in MainActivity rather than
+// Jetpack Navigation Compose, giving direct control over back press behaviour during active sessions
 sealed class Screen(val route: String) {
     object Onboarding : Screen("onboarding")
     object Home : Screen("home")

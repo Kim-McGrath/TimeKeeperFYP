@@ -45,6 +45,8 @@ fun PracticeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // Prevent the screen from sleeping during active sessions and countdowns
+    // Disposed when the composable leaves the composition
     val keepScreenOn = uiState is PracticeUiState.Active || uiState is PracticeUiState.Countdown
 
     val view = LocalView.current
@@ -53,17 +55,17 @@ fun PracticeScreen(
         onDispose { view.keepScreenOn = false }
     }
 
-    // Intercept back press during an active session — pause instead of navigate away.
-    // The user can then end the session deliberately via the End Session button.
-    // During countdown, back press is suppressed entirely to avoid an orphaned metronome.
+    // Intercept back press during an active session - pause instead of navigate away
+    // The user can then end the session deliberately via the End Session button
+    // During countdown, back press is suppressed entirely to avoid an orphaned metronome
     val isSessionActive = uiState is PracticeUiState.Active
     val isCountdown = uiState is PracticeUiState.Countdown
+    // During active session, back press pauses rather than navigating away, preserving session state so user can resume
     androidx.activity.compose.BackHandler(enabled = isSessionActive) {
         viewModel.pauseSession()
     }
     androidx.activity.compose.BackHandler(enabled = isCountdown) {
-        // Swallow back press during countdown — navigating away here would leave
-        // the metronome running with no way to stop it
+        // Swallow back press during countdown - navigating away here would leave the metronome running with no way to stop it
     }
 
     val colors = MaterialTheme.colorScheme
@@ -122,40 +124,25 @@ fun PracticeScreen(
                 CountdownContent(countdownValue = state.countdownValue)
             }
             is PracticeUiState.Active -> {
+                // debugEvents is collected here but no longer rendered
+                // The debug visualisation (DebugTimingVisualization) was used during development
+                // to verify the audio pipeline - showing metronome clicks, detected hits, and filtered onsets on a live timeline.
+                // It remains in the codebase as documentation of the testing approach
                 val debugEvents by viewModel.debugEvents.collectAsState()
-                var showDebug by remember { mutableStateOf(false) }
-                if (showDebug) {
-                    DebugTimingVisualization(
-                        events = debugEvents,
-                        sessionStartTime = state.sessionStartTime,
-                        currentTime = System.currentTimeMillis()
-                    )
-                } else {
-                    ActiveSessionContent(
-                        category = state.currentCategory,
-                        hitCount = state.hitCount,
-                        elapsedTimeMs = state.elapsedTimeMs,
-                        durationMs = state.durationMs,
-                        bpm = state.bpm,
-                        surfaceType = state.surfaceType,
-                        isPaused = state.isPaused,
-                        tapModeEnabled = state.tapModeEnabled,
-                        onTapHit = { viewModel.onTapHit() },
-                        onPauseClick = { viewModel.pauseSession() },
-                        onResumeClick = { viewModel.resumeSession() },
-                        onEndClick = { viewModel.endSession() }
-                    )
-                }
-                Button(
-                    onClick = { showDebug = !showDebug },
-                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (showDebug) Color(0xFFFF6B35) else colors.surfaceVariant,
-                        contentColor = if (showDebug) Color.White else colors.onSurfaceVariant
-                    )
-                ) {
-                    Text(if (showDebug) "NORMAL VIEW" else "DEBUG VIEW")
-                }
+                ActiveSessionContent(
+                    category = state.currentCategory,
+                    hitCount = state.hitCount,
+                    elapsedTimeMs = state.elapsedTimeMs,
+                    durationMs = state.durationMs,
+                    bpm = state.bpm,
+                    surfaceType = state.surfaceType,
+                    isPaused = state.isPaused,
+                    tapModeEnabled = state.tapModeEnabled,
+                    onTapHit = { viewModel.onTapHit() },
+                    onPauseClick = { viewModel.pauseSession() },
+                    onResumeClick = { viewModel.resumeSession() },
+                    onEndClick = { viewModel.endSession() }
+                )
             }
             is PracticeUiState.Completed -> {
                 CompletedContent(
@@ -288,7 +275,8 @@ private fun ReadyContent(
                 HorizontalDivider(color = colors.outline.copy(alpha = 0.2f))
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Tap tempo
+                // Tap tempo: accumulate tap timestamps and compute the average interval
+                // Resets if more than 3 seconds pass between taps to allow a fresh start
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -669,8 +657,8 @@ private fun TapModeContent(category: AccuracyCategory?, onTapHit: () -> Unit) {
             modifier = Modifier
                 .size(220.dp)
                 .background(
-                    // At rest (no flash): use surfaceVariant for a clear neutral background.
-                    // On flash after a hit: shift to the result colour briefly.
+                    // At rest (no flash): use surfaceVariant for a clear neutral background
+                    // On flash after a hit: shift to the result colour briefly
                     color = if (flashAnim.value > 0f)
                         tapColor.copy(alpha = 0.15f + flashAnim.value * 0.3f)
                     else
@@ -747,11 +735,11 @@ private fun CompletedContent(
     val colors = MaterialTheme.colorScheme
 
     val motivationalMessage = when {
-        stats.accuracyPercentage >= 90 -> "Outstanding work — that was a great session."
-        stats.accuracyPercentage >= 75 -> "Good session. Your timing is coming together."
-        stats.accuracyPercentage >= 60 -> "Getting there. Each session builds consistency."
+        stats.accuracyPercentage >= 90 -> "Great work - that was a great session!"
+        stats.accuracyPercentage >= 75 -> "Good session. Your timing is coming together!"
+        stats.accuracyPercentage >= 60 -> "Getting there. Each session builds consistency!"
         stats.totalHits < 3 -> "Short session recorded. Try a longer run to see your full results."
-        else -> "Keep going. Regular practice makes the biggest difference."
+        else -> "Keep going. Regular practice makes the biggest difference!"
     }
 
     Column(

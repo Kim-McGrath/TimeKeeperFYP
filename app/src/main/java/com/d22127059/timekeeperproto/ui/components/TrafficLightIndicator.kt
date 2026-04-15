@@ -19,6 +19,9 @@ import com.d22127059.timekeeperproto.ui.theme.ErrorRed
 import com.d22127059.timekeeperproto.ui.theme.SuccessGreen
 import com.d22127059.timekeeperproto.ui.theme.WarningAmber
 
+// Displays the timing accuracy result as a coloured shape with a text label
+// Circle = GREEN (Perfect), Diamond = YELLOW (Okay), Triangle = RED (Off Beat)
+// A pulse ring animates on each new result, and an idle breathing animation runs continuously to show the session is active
 @Composable
 fun TrafficLightIndicator(
     category: AccuracyCategory,

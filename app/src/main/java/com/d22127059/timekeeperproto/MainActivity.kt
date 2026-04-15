@@ -33,7 +33,7 @@ import com.d22127059.timekeeperproto.audio.MetronomeEngine
 import com.d22127059.timekeeperproto.audio.SurfaceType
 import com.d22127059.timekeeperproto.data.local.TimeKeeperDatabase
 import com.d22127059.timekeeperproto.data.repository.SessionRepository
-import com.d22127059.timekeeperproto.navigation.Screen
+import com.d22127059.timekeeperproto.ui.navigation.Screen
 import com.d22127059.timekeeperproto.ui.screens.auth.AccountScreen
 import com.d22127059.timekeeperproto.ui.screens.auth.AuthViewModel
 import com.d22127059.timekeeperproto.ui.screens.auth.AuthState
@@ -41,7 +41,7 @@ import com.d22127059.timekeeperproto.ui.screens.auth.LoginScreen
 import com.d22127059.timekeeperproto.ui.screens.auth.RegisterScreen
 import com.d22127059.timekeeperproto.ui.screens.home.HomeScreen
 import com.d22127059.timekeeperproto.ui.screens.history.HistoryScreen
-import com.d22127059.timekeeperproto.ui.screens.leaderboard.LeaderboardScreen
+import com.d22127059.timekeeperproto.ui.screens.auth.LeaderboardScreen
 import com.d22127059.timekeeperproto.ui.screens.onboarding.OnboardingScreen
 import com.d22127059.timekeeperproto.ui.screens.practice.PracticeScreen
 import com.d22127059.timekeeperproto.ui.screens.practice.PracticeViewModel
@@ -58,6 +58,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var authViewModel: AuthViewModel
     private lateinit var repository: SessionRepository
     private var hasMicrophonePermission = mutableStateOf(false)
+    // Surface type held at Activity level so it persists across recompositions
+    // Passed down to PracticeViewModel via onSurfaceTypeChanged rather than being owned by the ViewModel directly,
+    // needs to be readable by the setup UI before a session begins
     private var selectedSurfaceType = mutableStateOf(SurfaceType.DRUM_KIT)
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -155,6 +158,8 @@ fun TimeKeeperApp(
         scope.launch { userStats = repository.getUserStatistics() }
     }
 
+    // When a session completes and a user is logged in, sync the results to Firestore
+    // This runs after the session is already persisted locally in Room, so a network failure here does not affect local data
     LaunchedEffect(practiceUiState) {
         if (practiceUiState is PracticeUiState.Completed && currentUser != null) {
             val stats = (practiceUiState as PracticeUiState.Completed).stats
@@ -190,6 +195,8 @@ fun TimeKeeperApp(
 
     val colors = MaterialTheme.colorScheme
 
+    // Screens that suppress the bottom navigation bar. Practice-related states are full-screen to maximise the feedback indicator during active sessions
+    // Login and Register are full-screen to avoid navigation during the auth flow
     val isFullScreen = currentScreen == Screen.Onboarding ||
             (currentScreen == Screen.Practice &&
                     (practiceUiState is PracticeUiState.Active ||

@@ -1,8 +1,8 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"  // ← Changed to 2.0.21
-    id("com.google.devtools.ksp") version "2.0.21-1.0.28"  // ← This version exists
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("com.google.devtools.ksp") version "2.0.21-1.0.28"
     id("com.google.gms.google-services")
 }
 
@@ -75,7 +75,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.compose.runtime.livedata)
 
-    // Material Icons Extended - ADD THIS LINE
+    // Material Icons Extended
     implementation("androidx.compose.material:material-icons-extended:1.7.5")
 
     // Room Database

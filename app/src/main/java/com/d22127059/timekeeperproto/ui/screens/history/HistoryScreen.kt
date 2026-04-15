@@ -8,9 +8,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +45,7 @@ fun HistoryScreen(
             title = { Text("History", fontWeight = FontWeight.Bold, color = colors.onBackground) },
             navigationIcon = {
                 IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = colors.onBackground)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.onBackground)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
@@ -135,7 +136,7 @@ private fun SwipeToDeleteCard(
             if (value == SwipeToDismissBoxValue.EndToStart) {
                 showConfirmDialog = true
             }
-            // Always return false here — we never let the swipe complete automatically. Deletion only happens via dialog confirmation.
+            // Always return false here - we never let the swipe complete automatically. Deletion only happens via dialog confirmation
             false
         }
     )

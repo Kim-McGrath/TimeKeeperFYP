@@ -29,6 +29,7 @@ data class Session(
     val tendencyToDrag: Boolean    // True if consistently late
 ) {
 
+    // Convenience accessor returning accuracy as a 0.0–1.0 fraction
     val accuracyRate: Double
         get() = accuracyPercentage / 100.0
 

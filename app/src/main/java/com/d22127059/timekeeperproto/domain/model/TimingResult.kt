@@ -1,10 +1,7 @@
 package com.d22127059.timekeeperproto.domain.model
 
-// Represents the result of analysing a single drum hits timing
-// hitTimestamp: When the hit was detected (milliseconds since session start)
-// expectedBeatTimestamp: When the beat was expected (milliseconds since session start)
-// timingErrorMs: The difference between hit and expected beat (positive = late, negative = early)
-// accuracyCategory: The categorised accuracy (GREEN/YELLOW/RED)
+// Represents the result of analysing a single hit's timing against the nearest beat
+// timingErrorMs is signed: positive = late, negative = early
 data class TimingResult(
     val hitTimestamp: Long,
     val expectedBeatTimestamp: Long,

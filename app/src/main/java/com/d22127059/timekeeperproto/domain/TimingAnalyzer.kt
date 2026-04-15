@@ -4,36 +4,34 @@ import android.util.Log
 import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
 import com.d22127059.timekeeperproto.domain.model.TimingResult
 import kotlin.math.abs
-import kotlin.math.round
+import kotlin.math.floor
 
-// Analyses drum hit timing accuracy by comparing detected hits against expected metronome beats
-// The systemLatencyMs parameter exists for potential future use with differing device latency
-// but is currently unused, as latency is already properly handled in MetronomeEngine and OnsetDetector
+// Analyses drum hit timing accuracy by comparing detected hit timestamps against expected metronome beat positions
+// Latency compensation is handled upstream in MetronomeEngine and OnsetDetector before timestamps reach here
 
-class TimingAnalyzer(
-    private val bpm: Int,
-    private val systemLatencyMs: Long = 0L
-) {
+class TimingAnalyzer(private val bpm: Int) {
     companion object {
         private const val TAG = "TimingAnalyzer"
     }
 
     private val msBetweenBeats: Double = 60000.0 / bpm
 
+    // Compare against both the previous and next expected beat, use whichever produces the smaller absolute error
+    // Prevents midpoint misclassification where a hit arriving just past the halfway point between two beats would otherwise be incorrectly assigned to the wrong beat
     // Analyses a single hit and determines its timing accuracy
     // hitTimestamp: When the hit was detected (absolute time)
     // sessionStartTime: When the session started (absolute time)
     fun analyzeHit(hitTimestamp: Long, sessionStartTime: Long): TimingResult {
         val timeSinceStart = (hitTimestamp - sessionStartTime).toDouble()
 
-        val prevBeatNumber = Math.floor(timeSinceStart / msBetweenBeats).toLong()
+        val prevBeatNumber = floor(timeSinceStart / msBetweenBeats).toLong()
         val nextBeatNumber = prevBeatNumber + 1
 
         val prevBeatTime = sessionStartTime + (prevBeatNumber * msBetweenBeats).toLong()
         val nextBeatTime = sessionStartTime + (nextBeatNumber * msBetweenBeats).toLong()
 
-        val errorToPrev = Math.abs(hitTimestamp - prevBeatTime).toDouble()
-        val errorToNext = Math.abs(hitTimestamp - nextBeatTime).toDouble()
+        val errorToPrev = abs(hitTimestamp - prevBeatTime).toDouble()
+        val errorToNext = abs(hitTimestamp - nextBeatTime).toDouble()
 
         val (expectedBeatTimestamp, timingErrorMs) = if (errorToPrev <= errorToNext) {
             Pair(prevBeatTime, (hitTimestamp - prevBeatTime).toDouble())
@@ -50,23 +48,10 @@ class TimingAnalyzer(
         )
     }
 
-    // Generates a list of expected beat timestamps for the entire session
-    // for metronome visualisation and precalculating beat positions
-    fun generateExpectedBeats(sessionStartTime: Long, durationMs: Long): List<Long> {
-        val beats = mutableListOf<Long>()
-        var currentBeatTime = sessionStartTime
-        val sessionEndTime = sessionStartTime + durationMs
-
-        while (currentBeatTime <= sessionEndTime) {
-            beats.add(currentBeatTime)
-            currentBeatTime += msBetweenBeats.toLong()
-        }
-
-        return beats
-    }
-
     // Calculates aggregate statistics from a list of timing results
     // Used for post-session reporting and identifying timing tendencies
+    // Accuracy is defined as the percentage of hits that are GREEN or YELLOW
+    // A mean error below -10ms indicates rushing; above +10ms indicates dragging
     fun calculateSessionStats(results: List<TimingResult>): SessionStats {
         if (results.isEmpty()) {
             return SessionStats(

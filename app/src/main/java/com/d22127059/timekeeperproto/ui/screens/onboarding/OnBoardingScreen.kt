@@ -1,11 +1,27 @@
 package com.d22127059.timekeeperproto.ui.screens.onboarding
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -14,8 +30,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.d22127059.timekeeperproto.ui.components.TrafficLightIndicator
 import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
+import com.d22127059.timekeeperproto.ui.components.TrafficLightIndicator
 
 @Composable
 fun OnboardingScreen(
@@ -27,7 +43,7 @@ fun OnboardingScreen(
     val pages = listOf(
         OnboardingPage(
             title = "Welcome to TimeKeeper",
-            body = "TimeKeeper listens to you play and tells you how accurately you are hitting in time with the metronome.\n\nNo musical experience needed — if you can tap a surface, you can use this app."
+            body = "TimeKeeper listens to you play and tells you how accurately you are hitting in time with the metronome.\n\nNo musical experience needed - if you can tap a surface, you can use this app."
         ),
         OnboardingPage(
             title = "Your feedback shapes",
@@ -36,7 +52,7 @@ fun OnboardingScreen(
         ),
         OnboardingPage(
             title = "One quick tip",
-            body = "For the most accurate results, use headphones so the metronome click does not get picked up by the microphone.\n\nYou can still use the app without headphones — it works best in a quiet room."
+            body = "For the most accurate results, use headphones so the metronome click does not get picked up by the microphone.\n\nYou can still use the app without headphones - it works best in a quiet room."
         )
     )
 
@@ -150,7 +166,7 @@ private fun ShapePage() {
         ShapeExplanationRow(
             category = AccuracyCategory.GREEN,
             title = "Great!",
-            description = "You were within 50ms of the beat — essentially perfect timing.",
+            description = "You were within 50ms of the beat - essentially perfect timing.",
             color = Color(0xFF10B981)
         )
         Spacer(modifier = Modifier.height(16.dp))
@@ -167,21 +183,6 @@ private fun ShapePage() {
             description = "You were more than 150ms away from the beat. Keep practising!",
             color = Color(0xFFEF4444)
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = colors.surfaceVariant,
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(
-                text = "The different shapes (circle, diamond, triangle) mean the same thing as the colours — they're there so colour-blind users can still read the feedback clearly.",
-                color = colors.onSurfaceVariant,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                modifier = Modifier.padding(14.dp)
-            )
-        }
     }
 }
 

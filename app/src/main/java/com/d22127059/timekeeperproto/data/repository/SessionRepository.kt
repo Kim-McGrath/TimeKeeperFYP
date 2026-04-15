@@ -8,12 +8,13 @@ import com.d22127059.timekeeperproto.domain.model.TimingResult
 import kotlinx.coroutines.flow.Flow
 
 
+// Repository providing a single access point for session and hit data
+// Wraps the local Room DAOs. Firestore sync is handled separately in AuthViewModel, triggered from MainActivity after a session completes
 class SessionRepository(
     private val sessionDao: SessionDao,
     private val hitDao: HitDao
 ) {
 
-    // ========== Session Operations ==========
     // Saves a new session to the database. Return The ID of the newly created session
     suspend fun createSession(session: Session): Long {
         return sessionDao.insertSession(session)
@@ -34,17 +35,8 @@ class SessionRepository(
         return sessionDao.getAllSessions()
     }
 
-    // Gets recent sessions (limit to N most recent)
-    fun getRecentSessions(limit: Int = 10): Flow<List<Session>> {
-        return sessionDao.getRecentSessions(limit)
-    }
-
-    // Gets sessions within a date range
-    fun getSessionsInDateRange(startTime: Long, endTime: Long): Flow<List<Session>> {
-        return sessionDao.getSessionsInRange(startTime, endTime)
-    }
-
-    // Calculates overall user statistics across all sessions
+    // Aggregates total session count and average accuracy across all sessions
+    // Used by the home screen stats chips and the account screen
     suspend fun getUserStatistics(): UserStatistics {
         val totalSessions = sessionDao.getTotalSessionCount()
         val avgAccuracy = sessionDao.getAverageAccuracy() ?: 0.0
@@ -60,18 +52,8 @@ class SessionRepository(
         sessionDao.deleteSession(session)
     }
 
-    // ========== Hit Operations ==========
-    // Saves a single hit to the database
-    suspend fun saveHit(hit: Hit): Long {
-        return hitDao.insertHit(hit)
-    }
-
-    // Saves multiple hits at once
-    suspend fun saveHits(hits: List<Hit>) {
-        hitDao.insertHits(hits)
-    }
-
-    // Converts TimingResult to Hit entity and saves it
+    // Converts a TimingResult from the domain layer into a Hit entity and persists it
+    // Called after each detected hit during an active session
     // sessionId: The session this hit belongs to
     // result: The timing analysis result
     suspend fun saveTimingResult(sessionId: Long, result: TimingResult): Long {
@@ -93,17 +75,6 @@ class SessionRepository(
     // Gets hits for a session as a flow
     fun getHitsForSessionFlow(sessionId: Long): Flow<List<Hit>> {
         return hitDao.getHitsForSessionFlow(sessionId)
-    }
-
-    // Gets detailed statistics for a specific session including hit breakdown
-    suspend fun getSessionDetails(sessionId: Long): SessionDetails? {
-        val session = sessionDao.getSessionById(sessionId) ?: return null
-        val hits = hitDao.getHitsForSession(sessionId)
-
-        return SessionDetails(
-            session = session,
-            hits = hits
-        )
     }
 }
 

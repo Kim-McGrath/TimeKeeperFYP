@@ -174,7 +174,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(20.dp))
             }
 
-            // Progress chart — shown when 3+ sessions exist
+            // Progress chart - shown when 3+ sessions exist
             if (sessions.size >= 3) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -368,6 +368,7 @@ fun calculateStreak(sessions: List<Session>): Int {
     // Count backwards
     var streak = 0
     val checkCal = Calendar.getInstance()
+    // A one-day grace period means the streak is not immediately broken if the user has not yet practised today but did practise yesterday
     if (todayPair !in sessionDays) checkCal.add(Calendar.DAY_OF_YEAR, -1) // start from yesterday
 
     while (true) {

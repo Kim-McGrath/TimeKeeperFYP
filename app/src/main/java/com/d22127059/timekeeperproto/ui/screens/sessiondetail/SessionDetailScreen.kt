@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -85,7 +85,7 @@ fun SessionDetailScreen(
                                 navigationIcon = {
                                     IconButton(onClick = onNavigateBack) {
                                         Icon(
-                                            Icons.Default.ArrowBack,
+                                            Icons.AutoMirrored.Filled.ArrowBack,
                                             contentDescription = "Back",
                                             tint = Color.White
                                         )
@@ -170,7 +170,7 @@ fun SessionDetailScreen(
                     }
                 }
 
-                // Enhanced stats card — early/late, consistency, streak, best segment
+                // Enhanced stats card - early/late, consistency, streak, best segment
                 if (hits.size >= 3) {
                     item {
                         SectionCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -213,7 +213,7 @@ fun SessionDetailScreen(
                                 )
                             }
 
-                            // Best segment — only meaningful if enough hits exist
+                            // Best segment - only meaningful if enough hits exist
                             if (hits.size >= 9) {
                                 Spacer(modifier = Modifier.height(16.dp))
                                 HorizontalDivider(color = colors.outline.copy(alpha = 0.2f))
@@ -288,7 +288,7 @@ fun SessionDetailScreen(
     }
 }
 
-// ── Derived statistics ────────────────────────────────────────────────────────
+// Derived statistics
 
 data class DerivedStats(
     val earlyCount: Int,
@@ -315,7 +315,7 @@ private fun computeDerivedStats(hits: List<Hit>): DerivedStats {
     }
 
     // Early / late / on-time counts
-    // "On time" means within ±10ms — effectively indistinguishable from the beat
+    // "On time" means within ±10ms - effectively indistinguishable from the beat
     val earlyCount = hits.count { it.timingErrorMs < -10.0 }
     val lateCount = hits.count { it.timingErrorMs > 10.0 }
     val onTimeCount = hits.size - earlyCount - lateCount
@@ -344,7 +344,7 @@ private fun computeDerivedStats(hits: List<Hit>): DerivedStats {
         }
     }
 
-    // Best segment — split hits into thirds and find the most accurate portion
+    // Best segment - split hits into thirds and find the most accurate portion
     val segmentSize = hits.size / 3
     val segmentAccuracies = if (segmentSize > 0) {
         listOf(
@@ -378,7 +378,7 @@ private fun computeDerivedStats(hits: List<Hit>): DerivedStats {
     )
 }
 
-// ── New sub-components ────────────────────────────────────────────────────────
+// New sub-components
 
 @Composable
 private fun EarlyLateRow(
@@ -592,8 +592,6 @@ private fun BestSegmentRow(derivedStats: DerivedStats) {
         )
     }
 }
-
-// ── Existing sub-components (unchanged) ──────────────────────────────────────
 
 @Composable
 private fun SectionCard(
@@ -820,7 +818,7 @@ private fun HitRow(hit: Hit, modifier: Modifier = Modifier) {
     }
 }
 
-// ── Analysis logic ────────────────────────────────────────────────────────────
+// Analysis logic
 
 private data class TendencyAnalysis(
     val title: String,
@@ -845,7 +843,7 @@ private fun getTendencyAnalysis(
             title = "Playing slightly early",
             description = "Your hits landed about ${kotlin.math.abs(avgError.toInt())}ms before the beat on average. " +
                     "This usually happens when you anticipate the click rather than react to it. " +
-                    "It does not mean you are playing too fast overall — just catching the beat a fraction early.",
+                    "It does not mean you are playing too fast overall - just catching the beat a fraction early.",
             tip = "Try letting the click land first, then hitting. Practising at a slower speed and consciously waiting a moment longer can help train this.",
             color = blue
         )
@@ -859,7 +857,7 @@ private fun getTendencyAnalysis(
         )
         kotlin.math.abs(avgError) < 10 -> TendencyAnalysis(
             title = "Excellent timing",
-            description = "Your average error was only ${avgError.toInt()}ms — that is right on the beat. " +
+            description = "Your average error was only ${avgError.toInt()}ms. " +
                     "This level of consistency is the goal for any drummer and takes real practice to achieve.",
             tip = "To keep improving, try increasing the speed gradually or switching to a harder surface type.",
             color = primaryColor
@@ -867,20 +865,19 @@ private fun getTendencyAnalysis(
         else -> TendencyAnalysis(
             title = "Mixed timing",
             description = "Your hits were spread across both early and late, averaging ${avgError.toInt()}ms. " +
-                    "This is completely normal when starting out. " +
                     "Focus on listening to each click before hitting rather than trying to guess when it will come.",
-            tip = "Start at 60 or 80 BPM and focus on matching each click as closely as possible. Getting accurate at slow speeds makes faster speeds easier.",
+            tip = "Start at a lower BPM and focus on matching each click as closely as possible. Getting accurate at slow speeds makes faster speeds easier.",
             color = errorColor
         )
     }
 }
 
 private fun getOverallVerdict(accuracy: Double) = when {
-    accuracy >= 90 -> "Outstanding — keep it up"
-    accuracy >= 75 -> "Great session"
-    accuracy >= 60 -> "Good progress"
-    accuracy >= 45 -> "Keep practising"
-    else -> "Every session counts"
+    accuracy >= 90 -> "Amazing - keep it up!"
+    accuracy >= 75 -> "Great session!"
+    accuracy >= 60 -> "Good progress!"
+    accuracy >= 45 -> "Keep practising!"
+    else -> "Every session counts!"
 }
 
 private fun formatDate(timestamp: Long): String =

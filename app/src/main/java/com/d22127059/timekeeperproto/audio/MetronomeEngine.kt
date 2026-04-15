@@ -8,12 +8,13 @@ import android.media.AudioTrack
 import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.*
+import kotlin.math.exp
 import kotlin.math.sin
 
 
-//Generates and plays metronome clicks at a specified BPM
-//Uses AudioTrack to synthesise click sounds in realtime
-//Dynamically detects device-specific audio latency for accurate timing
+// Generates and plays metronome clicks at a specified BPM using AudioTrack PCM synthesis
+// Output latency calculated dynamically from the device's native buffer size and sample rate,
+// beat timestamps reported to TimingAnalyzer reflect when the click was heard rather than when it was written to the audio buffer
 
 class MetronomeEngine(private val context: Context? = null) {
     companion object {
@@ -31,7 +32,6 @@ class MetronomeEngine(private val context: Context? = null) {
     private var bpm: Int = 120
     private var measuredLatencyMs: Long = FALLBACK_LATENCY_MS
     private var sampleRate: Int = 44100
-    private var preGeneratedBeats: MutableList<ShortArray> = mutableListOf()
 
     // Callback invoked when each click is played (playback time, not write time)
     var onClickPlayed: ((clickTime: Long, beatNumber: Int) -> Unit)? = null
@@ -106,10 +106,8 @@ class MetronomeEngine(private val context: Context? = null) {
         }
     }
 
-    /**
-     * Gets the native sample rate for this device's audio output
-     * Using the native sample rate prevents resampling and reduces underruns
-     */
+     // Gets the native sample rate for this device's audio output
+     // Using the native sample rate prevents resampling and reduces underruns
     private fun getNativeSampleRate(): Int {
         return try {
             context?.let {
@@ -122,10 +120,9 @@ class MetronomeEngine(private val context: Context? = null) {
         }
     }
 
-    /**
-     * Measures the actual audio output latency for this device
-     * Uses multiple methods depending on Android version
-     */
+     // Measures the actual audio output latency for this device
+     // Uses multiple methods depending on Android version
+
     private fun measureAudioLatency(): Long {
         audioTrack?.let { track ->
             try {
@@ -163,7 +160,7 @@ class MetronomeEngine(private val context: Context? = null) {
             }
         }
 
-        // Method 2: Device-specific fallback based on known characteristics
+        // Fallback: estimate from Android API level when buffer calculation is unavailable or out of range
         val deviceLatency = when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.O -> 40L  // Modern devices
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> 60L  // Android 6+
@@ -174,9 +171,9 @@ class MetronomeEngine(private val context: Context? = null) {
         return deviceLatency
     }
 
-
-    // Starts the metronome at the specified BPM
-    // Returns the timestamp when beat 0 will be heard by the user
+        // Starts the metronome at the given BPM on a background coroutine
+        // Returns the timestamp when beat 0 will be heard - adjusted for output latency
+        // This value becomes sessionOriginTime in PracticeViewModel
 
     fun start(bpm: Int, coroutineScope: CoroutineScope): Long {
         if (isPlaying) {
@@ -190,6 +187,7 @@ class MetronomeEngine(private val context: Context? = null) {
         audioTrack?.let { track ->
             try {
                 // CRITICAL: Fill the buffer with silence before starting to prevent underruns
+                // Pre-fill the buffer with silence to prevent an underrun on the first write, which would cause an audible glitch at the start of the first beat
                 val silenceBuffer = ShortArray(track.bufferSizeInFrames)
                 track.write(silenceBuffer, 0, silenceBuffer.size)
 
@@ -239,6 +237,8 @@ class MetronomeEngine(private val context: Context? = null) {
                         }
                     }
                 }
+                // Beat timestamps are reported as playback time (write time + latency), not write time
+                // This ensures the TimingAnalyzer compares hits against when the click was heard, not when it was queued to the audio hardware
 
                 Log.d(TAG, "Metronome started at $bpm BPM (${intervalMs}ms interval)")
                 return sessionStartTime
@@ -285,7 +285,7 @@ class MetronomeEngine(private val context: Context? = null) {
     }
 
     // Generates a 1kHz sine wave with exponential decay envelope
-    // Creates a sharp "click" sound suitable for metronome
+    // Creates a sharp click sound suitable for metronome
     private fun generateClickSound(): ShortArray {
         val samples = (sampleRate * CLICK_DURATION_MS / 1000.0).toInt()
         val buffer = ShortArray(samples)
@@ -293,7 +293,7 @@ class MetronomeEngine(private val context: Context? = null) {
         for (i in 0 until samples) {
             val t = i.toDouble() / sampleRate
             val sine = sin(2.0 * Math.PI * CLICK_FREQUENCY_HZ * t)
-            val envelope = Math.exp(-t * 30.0)
+            val envelope = exp(-t * 30.0)
             val sample = (sine * envelope * 0.8 * Short.MAX_VALUE).toInt()
             buffer[i] = sample.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
@@ -301,8 +301,9 @@ class MetronomeEngine(private val context: Context? = null) {
         return buffer
     }
 
-    /**
-     * Gets the current measured latency (useful for debugging)
-     */
+
+    // Returns the calculated output latency used for beat timestamp adjustment
+    // Called by PracticeViewModel after initialisation to log the active value
+
     fun getMeasuredLatency(): Long = measuredLatencyMs
 }

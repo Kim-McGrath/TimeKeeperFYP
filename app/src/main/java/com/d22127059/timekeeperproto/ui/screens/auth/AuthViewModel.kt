@@ -29,6 +29,8 @@ class AuthViewModel : ViewModel() {
     private val _currentUser = MutableStateFlow<FirebaseUser?>(auth.currentUser)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
 
+    // Keep currentUser in sync with Firebase's auth state
+    // This handles external sign-out events (e.g. token expiry) without requiring an explicit logout call
     init {
         auth.addAuthStateListener { firebaseAuth ->
             _currentUser.value = firebaseAuth.currentUser
@@ -102,7 +104,9 @@ class AuthViewModel : ViewModel() {
         _authState.value = AuthState.Idle
     }
 
-    // Update leaderboard and user doc after a session
+    // Saves a completed session to Firestore and recalculates the user's running average accuracy for the leaderboard
+    // Called automatically after each session if the user is logged in
+    // Failures are silently ignored - local data is always written to Room first and is not dependent on this succeeding
     fun syncSessionToFirestore(
         accuracyPercentage: Double,
         bpm: Int,
@@ -161,7 +165,7 @@ class AuthViewModel : ViewModel() {
                 ).await()
 
             } catch (e: Exception) {
-                // Silently fail — local data is already saved to Room
+                // Silently fail - local data is already saved to Room
             }
         }
     }
