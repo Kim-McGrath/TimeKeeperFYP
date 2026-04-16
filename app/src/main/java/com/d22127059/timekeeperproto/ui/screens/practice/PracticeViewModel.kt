@@ -46,7 +46,6 @@ class PracticeViewModel(
     // The debug UI is no longer exposed to users (the toggle button has been removed from PracticeScreen) but the
     // event tracking is retained here as a record of the testing infrastructure
     private val _debugEvents = MutableStateFlow<List<DebugEvent>>(emptyList())
-    val debugEvents: StateFlow<List<DebugEvent>> = _debugEvents.asStateFlow()
 
     // sessionOriginTime is the fixed reference for all timing calculations.
     // It is set once when the session begins and never changes across pause/resume cycles.

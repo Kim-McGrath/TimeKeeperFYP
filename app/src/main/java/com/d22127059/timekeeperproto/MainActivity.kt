@@ -52,6 +52,7 @@ import com.d22127059.timekeeperproto.ui.theme.ThemeViewModel
 import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
 import androidx.core.content.edit
+import com.d22127059.timekeeperproto.data.repository.UserStatistics
 
 class MainActivity : ComponentActivity() {
 
@@ -162,7 +163,7 @@ fun TimeKeeperApp(
     val authState by authViewModel.authState.collectAsState()
 
     val sessions by repository.getAllSessions().collectAsState(initial = emptyList())
-    var userStats by remember { mutableStateOf<com.d22127059.timekeeperproto.data.repository.UserStatistics?>(null) }
+    var userStats by remember { mutableStateOf<UserStatistics?>(null) }
 
     LaunchedEffect(sessions) {
         scope.launch { userStats = repository.getUserStatistics() }

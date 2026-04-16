@@ -163,7 +163,7 @@ class AuthViewModel : ViewModel() {
                     )
                 ).await()
 
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Silently fail - local data is already saved to Room
             }
         }

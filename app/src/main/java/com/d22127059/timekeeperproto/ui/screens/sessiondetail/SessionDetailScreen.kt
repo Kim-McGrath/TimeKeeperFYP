@@ -254,7 +254,7 @@ fun SessionDetailScreen(
                 if (hits.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Recent Hits",
+                            text = if (hits.size > 20) "Recent Hits" else "All Hits",
                             color = colors.onBackground,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,

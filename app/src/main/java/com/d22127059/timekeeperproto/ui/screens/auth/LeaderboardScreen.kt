@@ -57,7 +57,7 @@ fun LeaderboardScreen(
                 if (sessions == 0) return@mapNotNull null
                 LeaderboardEntry(doc.id, name, acc, sessions)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             error = "Couldn't load leaderboard - check your connection"
         }
         isLoading = false

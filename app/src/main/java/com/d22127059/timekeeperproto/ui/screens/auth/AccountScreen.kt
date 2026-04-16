@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.sp
 import com.d22127059.timekeeperproto.data.repository.UserStatistics
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,7 +33,6 @@ fun AccountScreen(
     onLogout: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val scope = rememberCoroutineScope()
 
     var displayName by remember { mutableStateOf("") }
     var cloudSessions by remember { mutableStateOf(0) }
@@ -43,20 +41,18 @@ fun AccountScreen(
     var showLogoutDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentUser.uid) {
-        scope.launch {
-            try {
-                val doc = FirebaseFirestore.getInstance()
-                    .collection("users")
-                    .document(currentUser.uid)
-                    .get().await()
-                displayName = doc.getString("displayName") ?: currentUser.email ?: "User"
-                cloudSessions = doc.getLong("totalSessions")?.toInt() ?: 0
-                cloudAvgAccuracy = doc.getDouble("averageAccuracy") ?: 0.0
-            } catch (e: Exception) {
-                displayName = currentUser.email ?: "User"
-            }
-            isLoading = false
+        try {
+            val doc = FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(currentUser.uid)
+                .get().await()
+            displayName = doc.getString("displayName") ?: currentUser.email ?: "User"
+            cloudSessions = doc.getLong("totalSessions")?.toInt() ?: 0
+            cloudAvgAccuracy = doc.getDouble("averageAccuracy") ?: 0.0
+        } catch (_: Exception) {
+            displayName = currentUser.email ?: "User"
         }
+        isLoading = false
     }
 
     if (showLogoutDialog) {
@@ -227,7 +223,7 @@ fun AccountScreen(
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
-                border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.5.dp)
+                border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(width = 1.5.dp)
             ) {
                 Text("Sign Out", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
