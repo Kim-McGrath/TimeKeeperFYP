@@ -43,7 +43,9 @@ interface SessionDao {
     @Query("SELECT COUNT(*) FROM sessions")
     suspend fun getTotalSessionCount(): Int
 
-    // Deletes all sessions (for testing or data reset)
-    @Query("DELETE FROM sessions")
-    suspend fun deleteAllSessions()
+    // Removes incomplete session records left by previous app crashes
+    // Sessions with zero hits were created at session start but never finalised
+    @Query("DELETE FROM sessions WHERE totalHits = 0")
+    suspend fun deleteZeroHitSessions()
+
 }

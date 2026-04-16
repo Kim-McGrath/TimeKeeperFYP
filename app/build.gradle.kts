@@ -60,6 +60,7 @@ dependencies {
     implementation(libs.androidx.core.ktx.v1120)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation("androidx.fragment:fragment-ktx:1.8.4")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:33.1.0"))

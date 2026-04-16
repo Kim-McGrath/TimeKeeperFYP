@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.d22127059.timekeeperproto.audio.SurfaceType
 import com.d22127059.timekeeperproto.domain.model.AccuracyCategory
-import com.d22127059.timekeeperproto.ui.components.DebugTimingVisualization
 import com.d22127059.timekeeperproto.ui.components.TrafficLightIndicator
 import android.Manifest
 import android.content.pm.PackageManager
@@ -128,7 +127,6 @@ fun PracticeScreen(
                 // The debug visualisation (DebugTimingVisualization) was used during development
                 // to verify the audio pipeline - showing metronome clicks, detected hits, and filtered onsets on a live timeline.
                 // It remains in the codebase as documentation of the testing approach
-                val debugEvents by viewModel.debugEvents.collectAsState()
                 ActiveSessionContent(
                     category = state.currentCategory,
                     hitCount = state.hitCount,
@@ -366,7 +364,7 @@ private fun ReadyContent(
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                // Header row: label + calibration badge if active
+                // Surface type selector
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,

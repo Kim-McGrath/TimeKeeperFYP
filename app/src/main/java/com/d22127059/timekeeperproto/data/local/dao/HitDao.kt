@@ -32,23 +32,4 @@ interface HitDao {
     @Query("SELECT * FROM hits WHERE sessionId = :sessionId ORDER BY hitTimestamp ASC")
     fun getHitsForSessionFlow(sessionId: Long): Flow<List<Hit>>
 
-    // Gets hits by accuracy category for a session
-    @Query("SELECT * FROM hits WHERE sessionId = :sessionId AND accuracyCategory = :category ORDER BY hitTimestamp ASC")
-    suspend fun getHitsByCategory(sessionId: Long, category: String): List<Hit>
-
-    // Counts hits by category for a session
-    @Query("SELECT COUNT(*) FROM hits WHERE sessionId = :sessionId AND accuracyCategory = :category")
-    suspend fun countHitsByCategory(sessionId: Long, category: String): Int
-
-    // Gets the average timing error for a session
-    @Query("SELECT AVG(timingErrorMs) FROM hits WHERE sessionId = :sessionId")
-    suspend fun getAverageTimingError(sessionId: Long): Double?
-
-    // Deletes all hits for a specific session
-    @Query("DELETE FROM hits WHERE sessionId = :sessionId")
-    suspend fun deleteHitsForSession(sessionId: Long)
-
-    // Deletes all hits (for testing or data reset)
-    @Query("DELETE FROM hits")
-    suspend fun deleteAllHits()
 }

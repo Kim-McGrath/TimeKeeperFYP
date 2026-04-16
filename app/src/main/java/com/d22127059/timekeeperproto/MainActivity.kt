@@ -50,6 +50,8 @@ import com.d22127059.timekeeperproto.ui.screens.sessiondetail.SessionDetailScree
 import com.d22127059.timekeeperproto.ui.theme.TimeKeeperTheme
 import com.d22127059.timekeeperproto.ui.theme.ThemeViewModel
 import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
+import androidx.core.content.edit
 
 class MainActivity : ComponentActivity() {
 
@@ -82,6 +84,14 @@ class MainActivity : ComponentActivity() {
             hitDao = database.hitDao()
         )
 
+        // Clean up any incomplete session records left by previous crashes.
+        // These are sessions created at session start but never finalised because
+        // the app was closed or crashed before endSession() completed.
+        lifecycleScope.launch {
+            repository.deleteZeroHitSessions()
+        }
+
+
         val onsetDetector = OnsetDetector(initialSurfaceType = selectedSurfaceType.value)
         val metronomeEngine = MetronomeEngine(context = applicationContext)
 
@@ -90,7 +100,7 @@ class MainActivity : ComponentActivity() {
             metronomeEngine = metronomeEngine,
             repository = repository
         )
-        themeViewModel = ThemeViewModel()
+        themeViewModel = ThemeViewModel(application)
         authViewModel = AuthViewModel()
 
         val prefs = getSharedPreferences("timekeeper_prefs", Context.MODE_PRIVATE)
@@ -109,7 +119,7 @@ class MainActivity : ComponentActivity() {
                         repository = repository,
                         showOnboarding = !hasSeenOnboarding,
                         onOnboardingComplete = {
-                            prefs.edit().putBoolean("has_seen_onboarding", true).apply()
+                            prefs.edit { putBoolean("has_seen_onboarding", true) }
                         },
                         currentSurfaceType = selectedSurfaceType.value,
                         onSurfaceTypeChanged = { newType ->
@@ -279,7 +289,7 @@ fun TimeKeeperApp(
         }
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues)) {
-            when (val screen = currentScreen) {
+            when (currentScreen) {
                 Screen.Onboarding -> OnboardingScreen(
                     onComplete = {
                         onOnboardingComplete()
@@ -311,7 +321,7 @@ fun TimeKeeperApp(
                     }
                 )
                 is Screen.SessionDetail -> SessionDetailScreen(
-                    sessionId = screen.sessionId,
+                    sessionId = currentScreen.sessionId,
                     repository = repository,
                     onNavigateBack = { navigateBack() }
                 )

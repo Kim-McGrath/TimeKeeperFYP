@@ -35,7 +35,7 @@ class PracticeViewModel(
         // Empirically measured compensation for Android touch input processing delay
         // Touch events are stamped when the system processes them, not when the finger makes contact
         // Calibrated on the test device (Google Pixel 7a)
-        private const val TAP_LATENCY_COMPENSATION_MS = 200L
+        private const val TAP_LATENCY_COMPENSATION_MS = 208L
     }
 
     private val _uiState = MutableStateFlow<PracticeUiState>(PracticeUiState.Idle)
@@ -322,7 +322,22 @@ class PracticeViewModel(
         if (!tapModeEnabled) onsetDetector.stopDetection()
         metronomeEngine.stop()
 
-        val analyzer = timingAnalyzer ?: return
+        val analyzer = timingAnalyzer ?: run {
+            _uiState.value = PracticeUiState.Idle
+            return
+        }
+
+        // If no hits were recorded, delete the placeholder session and return to idle
+        if (hitResults.isEmpty()) {
+            currentSessionId?.let { sessionId ->
+                viewModelScope.launch {
+                    repository.getSession(sessionId)?.let { repository.deleteSession(it) }
+                    _uiState.value = PracticeUiState.Idle
+                }
+            } ?: run { _uiState.value = PracticeUiState.Idle }
+            return
+        }
+
         val stats = analyzer.calculateSessionStats(hitResults)
 
         currentSessionId?.let { sessionId ->

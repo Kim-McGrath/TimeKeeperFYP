@@ -1,5 +1,6 @@
 package com.d22127059.timekeeperproto.ui.screens.history
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,14 +26,14 @@ import com.d22127059.timekeeperproto.data.local.entities.Session
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     sessions: List<Session>,
     onSessionClick: (Long) -> Unit,
     onNavigateBack: () -> Unit,
     onDeleteSession: ((Session) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
 

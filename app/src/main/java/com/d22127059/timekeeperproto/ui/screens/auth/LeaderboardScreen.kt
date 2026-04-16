@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 data class LeaderboardEntry(
@@ -37,7 +36,6 @@ fun LeaderboardScreen(
     onNavigateBack: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val scope = rememberCoroutineScope()
     val currentUid = FirebaseAuth.getInstance().currentUser?.uid
 
     var entries by remember { mutableStateOf<List<LeaderboardEntry>>(emptyList()) }
@@ -45,26 +43,25 @@ fun LeaderboardScreen(
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        scope.launch {
-            try {
-                val snap = FirebaseFirestore.getInstance()
-                    .collection("leaderboard")
-                    .orderBy("averageAccuracy", Query.Direction.DESCENDING)
-                    .limit(20)
-                    .get().await()
+        try {
+            val snap = FirebaseFirestore.getInstance()
+                .collection("leaderboard")
+                .orderBy("averageAccuracy", Query.Direction.DESCENDING)
+                .limit(20)
+                .get().await()
 
-                entries = snap.documents.mapNotNull { doc ->
-                    val name = doc.getString("displayName") ?: return@mapNotNull null
-                    val acc = doc.getDouble("averageAccuracy") ?: 0.0
-                    val sessions = doc.getLong("totalSessions")?.toInt() ?: 0
-                    if (sessions == 0) return@mapNotNull null
-                    LeaderboardEntry(doc.id, name, acc, sessions)
-                }
-            } catch (e: Exception) {
-                error = "Couldn't load leaderboard — check your connection"
+            entries = snap.documents.mapNotNull { doc ->
+                val name = doc.getString("displayName") ?: return@mapNotNull null
+                val acc = doc.getDouble("averageAccuracy") ?: 0.0
+                val sessions = doc.getLong("totalSessions")?.toInt() ?: 0
+                if (sessions == 0) return@mapNotNull null
+                LeaderboardEntry(doc.id, name, acc, sessions)
             }
-            isLoading = false
+        } catch (e: Exception) {
+            error = "Couldn't load leaderboard - check your connection"
         }
+        isLoading = false
+
     }
 
     Column(

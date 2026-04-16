@@ -268,7 +268,7 @@ private fun AccuracyLineChart(sessions: List<Session>, modifier: Modifier = Modi
 
         // Draw filled area under the line
         val fillPath = Path()
-        val animatedCount = (sessions.size * animProgress).toInt().coerceAtLeast(2)
+        val animatedCount = (sessions.size * animProgress).toInt().coerceAtLeast(1)
         fillPath.moveTo(xAt(0), yAt(sessions[0].accuracyPercentage))
         for (i in 1 until animatedCount) {
             fillPath.lineTo(xAt(i), yAt(sessions[i].accuracyPercentage))

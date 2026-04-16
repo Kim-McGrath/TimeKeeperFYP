@@ -38,7 +38,7 @@ abstract class TimeKeeperDatabase : RoomDatabase() {
                     DATABASE_NAME
                 )
                     // Schema is at version 1 and has not changed since initial release
-                    .fallbackToDestructiveMigration(false)
+                    .fallbackToDestructiveMigration()
                     .build()
 
                 INSTANCE = instance

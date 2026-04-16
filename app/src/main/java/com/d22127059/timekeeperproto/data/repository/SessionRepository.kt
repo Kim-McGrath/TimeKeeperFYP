@@ -52,6 +52,12 @@ class SessionRepository(
         sessionDao.deleteSession(session)
     }
 
+    // Removes any incomplete session records left by app crashes.
+    // Sessions with zero hits were created at session start but never finalised.
+    suspend fun deleteZeroHitSessions() {
+        sessionDao.deleteZeroHitSessions()
+    }
+
     // Converts a TimingResult from the domain layer into a Hit entity and persists it
     // Called after each detected hit during an active session
     // sessionId: The session this hit belongs to
@@ -71,21 +77,10 @@ class SessionRepository(
     suspend fun getHitsForSession(sessionId: Long): List<Hit> {
         return hitDao.getHitsForSession(sessionId)
     }
-
-    // Gets hits for a session as a flow
-    fun getHitsForSessionFlow(sessionId: Long): Flow<List<Hit>> {
-        return hitDao.getHitsForSessionFlow(sessionId)
-    }
 }
 
 // Data class representing overall user statistics
 data class UserStatistics(
     val totalSessions: Int,
     val averageAccuracy: Double
-)
-
-// Data class representing detailed information about a session
-data class SessionDetails(
-    val session: Session,
-    val hits: List<Hit>
 )

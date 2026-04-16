@@ -136,16 +136,15 @@ class AuthViewModel : ViewModel() {
                     )
                 ).await()
 
-                // Recalculate user stats from all their sessions
-                val sessionsSnap = db.collection("sessions")
-                    .whereEqualTo("uid", user.uid)
-                    .get().await()
+                // Incrementally recalculate the running average using the stored totals
+                // This avoids reading the entire sessions collection on every sync
+                // one user doc read instead of potentially hundreds of session reads
+                val userDoc = db.collection("users").document(user.uid).get().await()
+                val currentTotal = userDoc.getLong("totalSessions")?.toInt() ?: 0
+                val currentAvg = userDoc.getDouble("averageAccuracy") ?: 0.0
 
-                val allAccuracies = sessionsSnap.documents.mapNotNull {
-                    it.getDouble("accuracyPercentage")
-                }
-                val newAvg = if (allAccuracies.isEmpty()) 0.0 else allAccuracies.average()
-                val newTotal = allAccuracies.size
+                val newTotal = currentTotal + 1
+                val newAvg = ((currentAvg * currentTotal) + accuracyPercentage) / newTotal
 
                 // Update user doc
                 db.collection("users").document(user.uid).update(
@@ -176,7 +175,7 @@ class AuthViewModel : ViewModel() {
         message.contains("password is invalid") -> "Incorrect password"
         message.contains("email address is already") -> "An account with this email already exists"
         message.contains("badly formatted") -> "Please enter a valid email address"
-        message.contains("network") -> "Network error — check your connection"
+        message.contains("network") -> "Network error - check your connection"
         else -> "Something went wrong. Please try again"
     }
 }

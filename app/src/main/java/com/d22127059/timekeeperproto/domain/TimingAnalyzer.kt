@@ -87,8 +87,8 @@ class TimingAnalyzer(private val bpm: Int) {
             yellowHits = yellowCount,
             redHits = redCount,
             averageTimingError = avgTimingError,
-            tendencyToRush = avgTimingError < -10.0,
-            tendencyToDrag = avgTimingError > 10.0
+            tendencyToRush = avgTimingError < -30.0,
+            tendencyToDrag = avgTimingError > 30.0
         )
     }
 }
