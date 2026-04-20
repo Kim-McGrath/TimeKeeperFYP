@@ -2,6 +2,8 @@
 
 A rhythm training Android application for drummers and percussionists. TimeKeeper listens to you play through the device microphone, compares your hits against a built-in metronome, and provides immediate visual feedback on your timing accuracy.
 
+Link to Demo video: https://youtu.be/KS28C5F9Pk4
+
 ## Overview
 
 The app is designed for both musicians and non-musicians who want to develop rhythmic accuracy. Each detected hit is categorised as perfect, acceptable, or off-beat, and displayed as one of three distinct shapes with corresponding colours. The shape system was designed to remain readable for colour-blind users.
